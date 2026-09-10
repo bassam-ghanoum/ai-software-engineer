@@ -3,6 +3,7 @@
 namespace App\Controller;
 
 use App\AI\Agent\CodeReviewAgent;
+use App\AI\Review\ReviewFinding;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -26,8 +27,29 @@ PHP;
 
         $review = $agent->review($code);
 
+        $output = [
+            'findings_count' => $review->count(),
+            'has_findings' => $review->hasFindings(),
+            'findings' => array_map(
+                static function (ReviewFinding $finding): array {
+                    return [
+                        'severity' => $finding->getSeverity(),
+                        'category' => $finding->getCategory(),
+                        'message' => $finding->getMessage(),
+                        'suggestion' => $finding->getSuggestion(),
+                    ];
+                },
+                $review->getFindings()
+            ),
+        ];
+
         return new Response(
-            '<pre>' . htmlspecialchars($review) . '</pre>'
+            '<pre>' . htmlspecialchars(
+                json_encode(
+                    $output,
+                    JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+                )
+            ) . '</pre>'
         );
     }
 }

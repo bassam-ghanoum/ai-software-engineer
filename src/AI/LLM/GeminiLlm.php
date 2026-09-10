@@ -44,4 +44,39 @@ final class GeminiLlm implements LlmInterface
 
         return $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
     }
+
+    public function generateJson(string $prompt): string
+    {
+        $response = $this->httpClient->request(
+            'POST',
+            sprintf(
+                'https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent',
+                $this->model
+            ),
+            [
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'x-goog-api-key' => $this->apiKey,
+                ],
+                'json' => [
+                    'contents' => [
+                        [
+                            'parts' => [
+                                [
+                                    'text' => $prompt,
+                                ],
+                            ],
+                        ],
+                    ],
+                    'generationConfig' => [
+                        'responseMimeType' => 'application/json',
+                    ],
+                ],
+            ]
+        );
+
+        $data = $response->toArray();
+
+        return $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+    }
 }
