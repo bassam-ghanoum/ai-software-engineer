@@ -30,3 +30,9 @@ services:
             $apiKey: '%env(GEMINI_API_KEY)%'
             $model: '%env(GEMINI_MODEL)%'
     App\AI\LLM\LlmInterface: '@App\AI\LLM\GeminiLlm'
+    App\AI\Git\ChangedCodeProviderInterface:
+        alias: App\AI\Git\GitChangedCodeProvider
+    App\AI\Agent\CodeReviewAgentInterface:
+        alias: App\AI\Agent\CodeReviewAgent
+    App\AI\Workflow\CodeReviewWorkflowInterface:
+        alias: App\AI\Workflow\CodeReviewWorkflow

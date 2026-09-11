@@ -6,7 +6,7 @@ use App\AI\LLM\LlmInterface;
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
 
-final class CodeReviewAgent
+final class CodeReviewAgent implements CodeReviewAgentInterface
 {
     public function __construct(
         private readonly LlmInterface $llm,
@@ -61,7 +61,6 @@ $code
 PROMPT;
 
         $json = $this->llm->generateJson($prompt);
-
         try {
             $data = json_decode(
                 $json,

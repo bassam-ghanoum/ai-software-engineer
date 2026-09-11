@@ -1,0 +1,43 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+jobs:
+  ai-code-review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, intl
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Determine Git revisions
+        id: revisions
+        run: |
+          echo "from=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          echo "to=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Run AI code review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+        run: |
+          php bin/console ai:review \
+            "${{ steps.revisions.outputs.from }}" \
+            "${{ steps.revisions.outputs.to }}"

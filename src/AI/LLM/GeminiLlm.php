@@ -26,6 +26,7 @@ final class GeminiLlm implements LlmInterface
                     'Content-Type' => 'application/json',
                     'x-goog-api-key' => $this->apiKey,
                 ],
+                'timeout' => 120,
                 'json' => [
                     'contents' => [
                         [
@@ -58,6 +59,7 @@ final class GeminiLlm implements LlmInterface
                     'Content-Type' => 'application/json',
                     'x-goog-api-key' => $this->apiKey,
                 ],
+                'timeout' => 120,
                 'json' => [
                     'contents' => [
                         [
