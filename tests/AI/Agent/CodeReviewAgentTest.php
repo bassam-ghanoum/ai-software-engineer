@@ -37,6 +37,7 @@ final class CodeReviewAgentTest extends TestCase
         $agent = new CodeReviewAgent($llm);
 
         $result = $agent->review(
+            'test.php',
             '<?php echo "Hello World";'
         );
 
@@ -78,7 +79,7 @@ final class CodeReviewAgentTest extends TestCase
             'The LLM returned invalid JSON.'
         );
 
-        $agent->review('<?php echo "Hello World";');
+        $agent->review('test.php', '<?php echo "Hello World";');
     }
 
     public function testItRejectsMissingFindingsArray(): void
@@ -100,7 +101,7 @@ final class CodeReviewAgentTest extends TestCase
             'The LLM JSON response does not contain a valid findings array.'
         );
 
-        $agent->review('<?php echo "Hello World";');
+        $agent->review('test.php', '<?php echo "Hello World";');
     }
 
     public function testItRejectsInvalidFindingStructure(): void
@@ -128,7 +129,7 @@ final class CodeReviewAgentTest extends TestCase
             'Review finding field "suggestion" is missing or invalid.'
         );
 
-        $agent->review('<?php echo "Hello World";');
+        $agent->review('test.php', '<?php echo "Hello World";');
     }
 
     public function testItRejectsInvalidSeverity(): void
@@ -157,7 +158,7 @@ final class CodeReviewAgentTest extends TestCase
             'Invalid review finding severity: unknown'
         );
 
-        $agent->review('<?php echo "Hello World";');
+        $agent->review('test.php', '<?php echo "Hello World";');
     }
 
     public function testItAcceptsEmptyFindings(): void
@@ -175,6 +176,7 @@ final class CodeReviewAgentTest extends TestCase
         $agent = new CodeReviewAgent($llm);
 
         $result = $agent->review(
+            'test.php',
             '<?php echo "Hello World";'
         );
 

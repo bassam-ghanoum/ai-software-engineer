@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\AI\Workflow;
 
 use App\AI\Agent\CodeReviewAgentInterface;
@@ -15,21 +17,28 @@ final class CodeReviewWorkflow implements CodeReviewWorkflowInterface
     }
 
     /**
+     * Review each changed PHP file independently.
+     *
+     * Each file is sent to the review agent as a separate LLM request.
+     *
      * @return array<string, ReviewResult>
      */
     public function reviewChanges(
         string $from,
-        string $to
+        string $to,
     ): array {
         $changedFiles = $this->changedCodeProvider->getChangedPhpFiles(
             $from,
-            $to
+            $to,
         );
 
         $results = [];
 
-        foreach ($changedFiles as $path => $code) {
-            $results[$path] = $this->reviewAgent->review($code);
+        foreach ($changedFiles as $filePath => $sourceCode) {
+            $results[$filePath] = $this->reviewAgent->review(
+                $filePath,
+                $sourceCode,
+            );
         }
 
         return $results;

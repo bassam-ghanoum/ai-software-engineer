@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\AI\Agent;
 
 use App\AI\LLM\LlmInterface;
@@ -13,12 +15,17 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
     ) {
     }
 
-    public function review(string $code): ReviewResult
-    {
+    public function review(
+        string $filePath,
+        string $code,
+    ): ReviewResult {
         $prompt = <<<PROMPT
 You are a senior PHP code reviewer.
 
-Review the following PHP code.
+Review the following PHP file.
+
+File:
+{$filePath}
 
 Look for:
 - Bugs
@@ -54,31 +61,32 @@ Do not include Markdown.
 Do not include code fences.
 Do not include any text outside the JSON.
 
-PHP code:
+PHP file:
 ----------------
 $code
 ----------------
 PROMPT;
 
         $json = $this->llm->generateJson($prompt);
+
         try {
             $data = json_decode(
                 $json,
                 true,
                 512,
-                JSON_THROW_ON_ERROR
+                JSON_THROW_ON_ERROR,
             );
         } catch (\JsonException $exception) {
             throw new \RuntimeException(
                 'The LLM returned invalid JSON.',
                 0,
-                $exception
+                $exception,
             );
         }
 
         if (!isset($data['findings']) || !is_array($data['findings'])) {
             throw new \RuntimeException(
-                'The LLM JSON response does not contain a valid findings array.'
+                'The LLM JSON response does not contain a valid findings array.',
             );
         }
 
@@ -87,7 +95,7 @@ PROMPT;
         foreach ($data['findings'] as $finding) {
             if (!is_array($finding)) {
                 throw new \RuntimeException(
-                    'A review finding must be a JSON object.'
+                    'A review finding must be a JSON object.',
                 );
             }
 
@@ -106,8 +114,8 @@ PROMPT;
                     throw new \RuntimeException(
                         sprintf(
                             'Review finding field "%s" is missing or invalid.',
-                            $field
-                        )
+                            $field,
+                        ),
                     );
                 }
             }

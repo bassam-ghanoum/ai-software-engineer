@@ -68,7 +68,10 @@ PHP;
         $reviewAgent
             ->expects(self::once())
             ->method('review')
-            ->with($originalSource)
+            ->with(
+                $filePath,
+                $originalSource,
+            )
             ->willReturn($reviewResult);
 
         $codeReviewWorkflow = new CodeReviewWorkflow(

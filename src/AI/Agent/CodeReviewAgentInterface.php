@@ -6,5 +6,5 @@ use App\AI\Review\ReviewResult;
 
 interface CodeReviewAgentInterface
 {
-    public function review(string $code): ReviewResult;
+    public function review(string $filePath, string $code): ReviewResult;
 }
