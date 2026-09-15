@@ -30,6 +30,11 @@ final class FixAgent implements FixAgentInterface
             $reviewResult->getFindings(),
         );
 
+        error_log(sprintf(
+            'FixAgent prompt size: %d bytes',
+            strlen($prompt),
+        ));
+
         return $this->llm->generate($prompt);
     }
 
