@@ -19,7 +19,7 @@ final class FixWorkflow
     }
 
     /**
-     * Apply fixes only after explicit developer approval.
+     * Apply fixes one file at a time, only after explicit developer approval.
      *
      * @param array<string, ReviewResult> $reviews
      */
@@ -34,36 +34,52 @@ final class FixWorkflow
         $fixedFiles = [];
 
         foreach ($reviews as $filePath => $reviewResult) {
-            if (!$reviewResult->hasFindings()) {
-                continue;
-            }
-
-            if (!$this->sourceFileProvider->exists($filePath)) {
-                throw new InvalidArgumentException(
-                    sprintf('Source file does not exist: %s', $filePath)
-                );
-            }
-
-            $sourceCode = $this->sourceFileProvider->read($filePath);
-
-            $fixedSource = $this->fixAgent->fix(
+            $fixedSource = $this->fixFile(
                 $filePath,
-                $sourceCode,
                 $reviewResult,
             );
 
-            if ($fixedSource === $sourceCode) {
+            if ($fixedSource === null) {
                 continue;
             }
-
-            $this->sourceFileProvider->write(
-                $filePath,
-                $fixedSource,
-            );
 
             $fixedFiles[$filePath] = $fixedSource;
         }
 
         return new FixResult($fixedFiles);
+    }
+
+    private function fixFile(
+        string $filePath,
+        ReviewResult $reviewResult,
+    ): ?string {
+        if (!$reviewResult->hasFindings()) {
+            return null;
+        }
+
+        if (!$this->sourceFileProvider->exists($filePath)) {
+            throw new InvalidArgumentException(
+                sprintf('Source file does not exist: %s', $filePath)
+            );
+        }
+
+        $sourceCode = $this->sourceFileProvider->read($filePath);
+
+        $fixedSource = $this->fixAgent->fix(
+            $filePath,
+            $sourceCode,
+            $reviewResult,
+        );
+
+        if ($fixedSource === $sourceCode) {
+            return null;
+        }
+
+        $this->sourceFileProvider->write(
+            $filePath,
+            $fixedSource,
+        );
+
+        return $fixedSource;
     }
 }

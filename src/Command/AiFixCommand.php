@@ -114,13 +114,26 @@ final class AiFixCommand extends Command
         $approved = $helper->ask($input, $output, $question);
 
         if (!$approved) {
-            $output->writeln('<comment>Fixes were not approved. No files were modified.</comment>');
+            $output->writeln(
+                '<comment>Fixes were not approved. No files were modified.</comment>'
+            );
 
             return Command::SUCCESS;
         }
 
         $output->writeln('');
-        $output->writeln('<info>Applying fixes...</info>');
+        $output->writeln('<info>Applying fixes one file at a time...</info>');
+
+        foreach ($reviews as $filePath => $reviewResult) {
+            if (!$reviewResult->hasFindings()) {
+                continue;
+            }
+
+            $output->writeln(sprintf(
+                '<info>Fixing: %s</info>',
+                $filePath,
+            ));
+        }
 
         $result = $this->fixWorkflow->fix(
             $reviews,
@@ -132,6 +145,8 @@ final class AiFixCommand extends Command
 
             return Command::SUCCESS;
         }
+
+        $output->writeln('');
 
         foreach ($result->getFixedFiles() as $filePath => $fixedSource) {
             $output->writeln(sprintf(
