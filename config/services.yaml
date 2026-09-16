@@ -29,6 +29,7 @@ services:
         arguments:
             $apiKey: '%env(GEMINI_API_KEY)%'
             $model: '%env(GEMINI_MODEL)%'
+            $retryDelay: '%env(int:GEMINI_RETRY_DELAY)%'
     App\AI\LLM\LlmInterface: '@App\AI\LLM\GeminiLlm'
     App\AI\Git\ChangedCodeProviderInterface:
         alias: App\AI\Git\GitChangedCodeProvider

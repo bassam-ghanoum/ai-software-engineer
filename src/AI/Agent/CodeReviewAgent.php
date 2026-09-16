@@ -67,22 +67,26 @@ $code
 ----------------
 PROMPT;
 
-        $json = $this->llm->generateJson($prompt);
+$json = $this->llm->generateJson($prompt);
 
-        try {
-            $data = json_decode(
-                $json,
-                true,
-                512,
-                JSON_THROW_ON_ERROR,
-            );
-        } catch (\JsonException $exception) {
-            throw new \RuntimeException(
-                'The LLM returned invalid JSON.',
-                0,
-                $exception,
-            );
-        }
+try {
+    $data = json_decode(
+        $json,
+        true,
+        512,
+        JSON_THROW_ON_ERROR,
+    );
+} catch (\JsonException $exception) {
+    throw new \RuntimeException(
+        sprintf(
+            "The LLM returned invalid JSON.\nJSON error: %s\nRaw response:\n%s",
+            $exception->getMessage(),
+            $json,
+        ),
+        0,
+        $exception,
+    );
+}
 
         if (!isset($data['findings']) || !is_array($data['findings'])) {
             throw new \RuntimeException(

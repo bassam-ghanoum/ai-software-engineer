@@ -7,6 +7,7 @@ namespace App\Tests\AI\Workflow;
 use App\AI\Agent\CodeReviewAgentInterface;
 use App\AI\Agent\FixAgent\FixAgentInterface;
 use App\AI\File\SourceFileProviderInterface;
+use App\AI\File\SourceValidatorInterface;
 use App\AI\Git\ChangedCodeProviderInterface;
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
@@ -103,10 +104,25 @@ PHP;
             ->with($filePath)
             ->willReturn($originalSource);
 
+        $sourceValidator = $this->createMock(
+            SourceValidatorInterface::class
+        );
+
+        $sourceValidator
+            ->expects(self::once())
+            ->method('validate')
+            ->with(
+                $filePath,
+                $fixedSource,
+            );
+
         $sourceFileProvider
             ->expects(self::once())
             ->method('write')
-            ->with($filePath, $fixedSource);
+            ->with(
+                $filePath,
+                $fixedSource,
+            );
 
         $fixAgent = $this->createMock(
             FixAgentInterface::class
@@ -125,6 +141,7 @@ PHP;
         $fixWorkflow = new FixWorkflow(
             $fixAgent,
             $sourceFileProvider,
+            $sourceValidator,
         );
 
         $result = $fixWorkflow->fix(
@@ -176,9 +193,18 @@ PHP;
             ->expects(self::never())
             ->method('write');
 
+        $sourceValidator = $this->createMock(
+            SourceValidatorInterface::class
+        );
+
+        $sourceValidator
+            ->expects(self::never())
+            ->method('validate');
+
         $fixWorkflow = new FixWorkflow(
             $fixAgent,
             $sourceFileProvider,
+            $sourceValidator,
         );
 
         $result = $fixWorkflow->fix(

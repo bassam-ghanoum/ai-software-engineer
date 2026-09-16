@@ -121,4 +121,30 @@ PHP;
 
         self::assertSame('<?php', $result);
     }
+
+    public function testReturnsExactlyTheSourceReturnedByLlm(): void
+    {
+        $llm = $this->createMock(LlmInterface::class);
+        $fixedSource = 
+        <<<'PHP'
+         <?php function calculate(): int { return 42; } 
+PHP; 
+        $llm ->expects(self::once()) 
+        ->method('generate') 
+        ->willReturn($fixedSource); 
+        $agent = new FixAgent($llm); 
+        $finding = new ReviewFinding( 
+            'high', 
+            'bug', 
+            'Incorrect return value', 
+            'Return the correct value', 
+            ); 
+            $result = 
+            $agent->fix( 
+                'example.php', 
+                '<?php return 0;', 
+                new ReviewResult([$finding]), 
+                ); 
+                self::assertSame($fixedSource, $result); 
+    }
 }

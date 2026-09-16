@@ -7,6 +7,7 @@ namespace App\AI\Workflow;
 use App\AI\Agent\FixAgent\FixAgentInterface;
 use App\AI\Agent\FixAgent\FixResult;
 use App\AI\File\SourceFileProviderInterface;
+use App\AI\File\SourceValidatorInterface;
 use App\AI\Review\ReviewResult;
 use InvalidArgumentException;
 
@@ -15,6 +16,7 @@ final class FixWorkflow
     public function __construct(
         private readonly FixAgentInterface $fixAgent,
         private readonly SourceFileProviderInterface $sourceFileProvider,
+        private readonly SourceValidatorInterface $sourceValidator,
     ) {
     }
 
@@ -30,13 +32,13 @@ final class FixWorkflow
         if (!$developerApproved) {
             return new FixResult([]);
         }
-
         $fixedFiles = [];
 
         foreach ($reviews as $filePath => $reviewResult) {
             $fixedSource = $this->fixFile(
                 $filePath,
                 $reviewResult,
+
             );
 
             if ($fixedSource === null) {
@@ -74,6 +76,11 @@ final class FixWorkflow
         if ($fixedSource === $sourceCode) {
             return null;
         }
+
+        $this->sourceValidator->validate(
+            $filePath,
+            $fixedSource,
+        );
 
         $this->sourceFileProvider->write(
             $filePath,

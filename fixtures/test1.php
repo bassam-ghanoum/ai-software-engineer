@@ -1,9 +1,7 @@
 <?php
+function test(): string     
 
-function test(): array
-{
     echo *"Hello, World!";
 
-    
     return [];
 }
