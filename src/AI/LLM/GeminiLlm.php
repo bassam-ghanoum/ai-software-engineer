@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI\LLM;
 
+use RuntimeException;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 
@@ -33,7 +34,7 @@ final class GeminiLlm implements LlmInterface
             ],
         ]);
 
-        return $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+        return $this->extractText($data);
     }
 
     public function generateJson(string $prompt): string
@@ -53,7 +54,7 @@ final class GeminiLlm implements LlmInterface
             ],
         ]);
 
-        return $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+        return $this->extractText($data);
     }
 
     /**
@@ -91,7 +92,17 @@ final class GeminiLlm implements LlmInterface
                     continue;
                 }
 
-                return $response->toArray(false);
+                $data = $response->toArray(false);
+
+                if ($statusCode >= 400) {
+                    throw new RuntimeException(sprintf(
+                        'Gemini API request failed with HTTP %d: %s',
+                        $statusCode,
+                        json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+                    ));
+                }
+
+                return $data;
             } catch (TransportExceptionInterface $exception) {
                 if ($attempt >= self::MAX_RETRIES) {
                     throw $exception;
@@ -101,7 +112,24 @@ final class GeminiLlm implements LlmInterface
             }
         }
 
-        return [];
+        throw new RuntimeException('Gemini API request failed after all retry attempts.');
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function extractText(array $data): string
+    {
+        $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? null;
+
+        if (is_string($text) && $text !== '') {
+            return $text;
+        }
+
+        throw new RuntimeException(sprintf(
+            'Gemini returned no text content. Response: %s',
+            json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+        ));
     }
 
     private function shouldRetry(int $statusCode): bool

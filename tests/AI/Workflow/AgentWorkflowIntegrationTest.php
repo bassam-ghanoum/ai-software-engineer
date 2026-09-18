@@ -6,6 +6,7 @@ namespace App\Tests\AI\Workflow;
 
 use App\AI\Agent\CodeReviewAgentInterface;
 use App\AI\Agent\FixAgent\FixAgentInterface;
+use App\AI\Agent\FixAgent\FixScopeValidatorInterface;
 use App\AI\File\SourceFileProviderInterface;
 use App\AI\File\SourceValidatorInterface;
 use App\AI\Git\ChangedCodeProviderInterface;
@@ -116,6 +117,8 @@ PHP;
                 $fixedSource,
             );
 
+        $fixScopeValidator = $this->createPassingFixScopeValidator();
+
         $sourceFileProvider
             ->expects(self::once())
             ->method('write')
@@ -142,6 +145,7 @@ PHP;
             $fixAgent,
             $sourceFileProvider,
             $sourceValidator,
+            $fixScopeValidator,
         );
 
         $result = $fixWorkflow->fix(
@@ -177,6 +181,8 @@ PHP;
             ->expects(self::never())
             ->method('fix');
 
+        $fixScopeValidator = $this->createPassingFixScopeValidator();
+
         $sourceFileProvider = $this->createMock(
             SourceFileProviderInterface::class
         );
@@ -205,6 +211,7 @@ PHP;
             $fixAgent,
             $sourceFileProvider,
             $sourceValidator,
+            $fixScopeValidator,
         );
 
         $result = $fixWorkflow->fix(
@@ -215,4 +222,9 @@ PHP;
         self::assertFalse($result->hasChanges());
         self::assertSame([], $result->getFixedFiles());
     }
+
+private function createPassingFixScopeValidator(): FixScopeValidatorInterface
+{
+    return $this->createStub(FixScopeValidatorInterface::class);
+}
 }

@@ -45,14 +45,10 @@ final class GeminiLlmTest extends TestCase
                 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
                 self::callback(function (array $options): bool {
                     return
-                        $options['headers']['Content-Type']
-                            === 'application/json'
-                        && $options['headers']['x-goog-api-key']
-                            === 'test-api-key'
-                        && $options['timeout']
-                            === 120
-                        && $options['json']['contents'][0]['parts'][0]['text']
-                            === 'Test prompt';
+                        $options['headers']['Content-Type'] === 'application/json'
+                        && $options['headers']['x-goog-api-key'] === 'test-api-key'
+                        && $options['timeout'] === 120
+                        && $options['json']['contents'][0]['parts'][0]['text'] === 'Test prompt';
                 })
             )
             ->willReturn($response);
@@ -104,14 +100,10 @@ final class GeminiLlmTest extends TestCase
                 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
                 self::callback(function (array $options): bool {
                     return
-                        $options['headers']['Content-Type']
-                            === 'application/json'
-                        && $options['headers']['x-goog-api-key']
-                            === 'test-api-key'
-                        && $options['timeout']
-                            === 120
-                        && $options['json']['generationConfig']['responseMimeType']
-                            === 'application/json';
+                        $options['headers']['Content-Type'] === 'application/json'
+                        && $options['headers']['x-goog-api-key'] === 'test-api-key'
+                        && $options['timeout'] === 120
+                        && $options['json']['generationConfig']['responseMimeType'] === 'application/json';
                 })
             )
             ->willReturn($response);
@@ -265,10 +257,10 @@ final class GeminiLlmTest extends TestCase
             0,
         );
 
-        self::assertSame(
-            '',
-            $llm->generate('Test prompt')
-        );
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Gemini API request failed with HTTP 400');
+
+        $llm->generate('Test prompt');
     }
 
     public function testGenerateRetriesMaximumNumberOfTimes(): void
@@ -278,6 +270,10 @@ final class GeminiLlmTest extends TestCase
         $rateLimitedResponse
             ->method('getStatusCode')
             ->willReturn(429);
+
+        $rateLimitedResponse
+            ->method('toArray')
+            ->willReturn([]);
 
         $httpClient = $this->createMock(HttpClientInterface::class);
 
@@ -293,9 +289,9 @@ final class GeminiLlmTest extends TestCase
             0,
         );
 
-        self::assertSame(
-            '',
-            $llm->generate('Test prompt')
-        );
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('Gemini API request failed with HTTP 429');
+
+        $llm->generate('Test prompt');
     }
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\AI\Workflow;
 
 use App\AI\Agent\FixAgent\FixAgentInterface;
+use App\AI\Agent\FixAgent\FixScopeValidatorInterface;
 use App\AI\File\SourceFileProviderInterface;
 use App\AI\File\SourceValidatorInterface;
 use App\AI\Review\ReviewFinding;
@@ -12,6 +13,7 @@ use App\AI\Review\ReviewResult;
 use App\AI\Workflow\FixWorkflow;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 final class FixWorkflowTest extends TestCase
 {
@@ -20,6 +22,7 @@ final class FixWorkflowTest extends TestCase
         $fixAgent = $this->createMock(FixAgentInterface::class);
         $fileProvider = $this->createMock(SourceFileProviderInterface::class);
         $sourceValidator = $this->createMock(SourceValidatorInterface::class);
+        $fixScopeValidator = $this->createPassingFixScopeValidator();
 
         $fixAgent
             ->expects(self::never())
@@ -37,6 +40,7 @@ final class FixWorkflowTest extends TestCase
             $fixAgent,
             $fileProvider,
             $sourceValidator,
+            $fixScopeValidator,
         );
 
         $review = new ReviewResult([
@@ -64,13 +68,14 @@ final class FixWorkflowTest extends TestCase
         $fixAgent = $this->createMock(FixAgentInterface::class);
         $fileProvider = $this->createMock(SourceFileProviderInterface::class);
         $sourceValidator = $this->createMock(SourceValidatorInterface::class);
+        $fixScopeValidator = $this->createPassingFixScopeValidator();
 
         $review = new ReviewResult([
             new ReviewFinding(
                 'high',
                 'bug',
                 'Example bug',
-                'Fix the bug',
+                'Fix the bug.',
             ),
         ]);
 
@@ -128,6 +133,7 @@ PHP;
             $fixAgent,
             $fileProvider,
             $sourceValidator,
+            $fixScopeValidator,
         );
 
         $result = $workflow->fix(
@@ -144,7 +150,7 @@ PHP;
             [
                 'src/Test.php' => $fixedSource,
             ],
-            $result->getFixedFiles()
+            $result->getFixedFiles(),
         );
     }
 
@@ -153,6 +159,7 @@ PHP;
         $fixAgent = $this->createMock(FixAgentInterface::class);
         $fileProvider = $this->createMock(SourceFileProviderInterface::class);
         $sourceValidator = $this->createMock(SourceValidatorInterface::class);
+        $fixScopeValidator = $this->createPassingFixScopeValidator();
 
         $fixAgent
             ->expects(self::never())
@@ -174,6 +181,7 @@ PHP;
             $fixAgent,
             $fileProvider,
             $sourceValidator,
+            $fixScopeValidator,
         );
 
         $result = $workflow->fix(
@@ -191,13 +199,14 @@ PHP;
         $fixAgent = $this->createMock(FixAgentInterface::class);
         $fileProvider = $this->createMock(SourceFileProviderInterface::class);
         $sourceValidator = $this->createMock(SourceValidatorInterface::class);
+        $fixScopeValidator = $this->createPassingFixScopeValidator();
 
         $review = new ReviewResult([
             new ReviewFinding(
                 'medium',
                 'maintainability',
                 'Example issue',
-                'Improve the code',
+                'Improve the code.',
             ),
         ]);
 
@@ -230,6 +239,7 @@ PHP;
             $fixAgent,
             $fileProvider,
             $sourceValidator,
+            $fixScopeValidator,
         );
 
         $result = $workflow->fix(
@@ -248,13 +258,14 @@ PHP;
         $fixAgent = $this->createMock(FixAgentInterface::class);
         $fileProvider = $this->createMock(SourceFileProviderInterface::class);
         $sourceValidator = $this->createMock(SourceValidatorInterface::class);
+        $fixScopeValidator = $this->createPassingFixScopeValidator();
 
         $review = new ReviewResult([
             new ReviewFinding(
                 'high',
                 'bug',
                 'Example bug',
-                'Fix the bug',
+                'Fix the bug.',
             ),
         ]);
 
@@ -284,6 +295,7 @@ PHP;
             $fixAgent,
             $fileProvider,
             $sourceValidator,
+            $fixScopeValidator,
         );
 
         $this->expectException(InvalidArgumentException::class);
@@ -304,13 +316,14 @@ PHP;
         $fixAgent = $this->createMock(FixAgentInterface::class);
         $fileProvider = $this->createMock(SourceFileProviderInterface::class);
         $sourceValidator = $this->createMock(SourceValidatorInterface::class);
+        $fixScopeValidator = $this->createPassingFixScopeValidator();
 
         $review1 = new ReviewResult([
             new ReviewFinding(
                 'high',
                 'bug',
                 'Bug in file one',
-                'Fix file one',
+                'Fix file one.',
             ),
         ]);
 
@@ -319,7 +332,7 @@ PHP;
                 'medium',
                 'maintainability',
                 'Issue in file two',
-                'Improve file two',
+                'Improve file two.',
             ),
         ]);
 
@@ -407,6 +420,7 @@ PHP;
             $fixAgent,
             $fileProvider,
             $sourceValidator,
+            $fixScopeValidator,
         );
 
         $result = $workflow->fix(
@@ -434,13 +448,14 @@ PHP;
         $fixAgent = $this->createMock(FixAgentInterface::class);
         $fileProvider = $this->createMock(SourceFileProviderInterface::class);
         $sourceValidator = $this->createMock(SourceValidatorInterface::class);
+        $fixScopeValidator = $this->createPassingFixScopeValidator();
 
         $review = new ReviewResult([
             new ReviewFinding(
                 'critical',
                 'bug',
                 'Example critical issue',
-                'Fix the issue',
+                'Fix the issue.',
             ),
         ]);
 
@@ -477,7 +492,7 @@ PHP;
                 $invalidFixedSource,
             )
             ->willThrowException(
-                new \RuntimeException('Invalid PHP source.')
+                new RuntimeException('Invalid PHP source.')
             );
 
         $fileProvider
@@ -488,9 +503,10 @@ PHP;
             $fixAgent,
             $fileProvider,
             $sourceValidator,
+            $fixScopeValidator,
         );
 
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Invalid PHP source.');
 
         $workflow->fix(
@@ -500,4 +516,127 @@ PHP;
             true,
         );
     }
+
+    public function testFixIsRejectedWhenScopeValidatorFails(): void
+    {
+        $fixAgent = $this->createMock(FixAgentInterface::class);
+        $sourceFileProvider = $this->createMock(
+            SourceFileProviderInterface::class
+        );
+        $sourceValidator = $this->createMock(
+            SourceValidatorInterface::class
+        );
+        $fixScopeValidator = $this->createMock(
+            FixScopeValidatorInterface::class
+        );
+
+        $reviewResult = $this->createReviewResult();
+
+        $originalSource = <<<'PHP'
+<?php
+
+function test(): string
+{
+    echo *"Hello, World!";
+
+    return [];
+}
+PHP;
+
+        $fixedSource = <<<'PHP'
+<?php
+
+function test(): string {
+
+    echo "Hello, World!";
+
+    return '';
+}
+PHP;
+
+        $sourceFileProvider
+            ->expects(self::once())
+            ->method('exists')
+            ->with('fixtures/test1.php')
+            ->willReturn(true);
+
+        $sourceFileProvider
+            ->expects(self::once())
+            ->method('read')
+            ->with('fixtures/test1.php')
+            ->willReturn($originalSource);
+
+        $fixAgent
+            ->expects(self::once())
+            ->method('fix')
+            ->with(
+                'fixtures/test1.php',
+                $originalSource,
+                $reviewResult,
+            )
+            ->willReturn($fixedSource);
+
+        $sourceValidator
+            ->expects(self::once())
+            ->method('validate')
+            ->with(
+                'fixtures/test1.php',
+                $fixedSource,
+            );
+
+        $fixScopeValidator
+            ->expects(self::once())
+            ->method('validate')
+            ->with(
+                'fixtures/test1.php',
+                $originalSource,
+                $fixedSource,
+                $reviewResult,
+            )
+            ->willThrowException(
+                new RuntimeException(
+                    'Fix rejected because it contains changes outside the review scope.'
+                )
+            );
+
+        $sourceFileProvider
+            ->expects(self::never())
+            ->method('write');
+
+        $workflow = new FixWorkflow(
+            $fixAgent,
+            $sourceFileProvider,
+            $sourceValidator,
+            $fixScopeValidator,
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Fix rejected because it contains changes outside the review scope.'
+        );
+
+        $workflow->fix(
+            [
+                'fixtures/test1.php' => $reviewResult,
+            ],
+            true,
+        );
+    }
+
+    private function createReviewResult(): ReviewResult
+    {
+        return new ReviewResult([
+            new ReviewFinding(
+                'critical',
+                'bug',
+                'Syntax error caused by the unexpected * operator.',
+                'Remove the * operator.',
+            ),
+        ]);
+    }
+
+private function createPassingFixScopeValidator(): FixScopeValidatorInterface
+{
+    return $this->createStub(FixScopeValidatorInterface::class);
+}
 }

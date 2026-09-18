@@ -1,8 +1,6 @@
 <?php
-function test(): string     
-
-    echo *"Hello, World!";
+function test(): string {
 
     // This is a comment
-    return [];
+    return "Hello, World!";
 }
