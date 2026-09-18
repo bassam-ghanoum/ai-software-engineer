@@ -16,7 +16,7 @@ final class GeminiLlm implements LlmInterface
         private readonly HttpClientInterface $httpClient,
         private readonly string $apiKey,
         private readonly string $model,
-        private readonly int $retryDelay = 1,
+        private readonly int $retryDelay,
     ) {
     }
 

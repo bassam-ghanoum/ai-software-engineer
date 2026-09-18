@@ -29,7 +29,8 @@ services:
         arguments:
             $apiKey: '%env(GEMINI_API_KEY)%'
             $model: '%env(GEMINI_MODEL)%'
-            $retryDelay: '%env(int:GEMINI_RETRY_DELAY)%'
+            # The "default::" processor provides a fallback if the env var is missing
+            $retryDelay: '%env(int:default::GEMINI_RETRY_DELAY)%'
     App\AI\LLM\LlmInterface: '@App\AI\LLM\GeminiLlm'
     App\AI\Git\ChangedCodeProviderInterface:
         alias: App\AI\Git\GitChangedCodeProvider
@@ -37,3 +38,7 @@ services:
         alias: App\AI\Agent\CodeReviewAgent
     App\AI\Workflow\CodeReviewWorkflowInterface:
         alias: App\AI\Workflow\CodeReviewWorkflow
+
+parameters:
+    # This defines the fallback value if GEMINI_RETRY_DELAY is not found
+    env(GEMINI_RETRY_DELAY): '1' 

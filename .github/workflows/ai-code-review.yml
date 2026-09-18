@@ -37,10 +37,14 @@ jobs:
           echo "from=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
           echo "to=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
 
+      - name: clear cache
+        run: php bin/console cache:clear
+      
       - name: Run AI code review
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_RETRY_DELAY: ${{ vars.GEMINI_RETRY_DELAY }}
         run: |
           php bin/console ai:review \
             "${{ steps.revisions.outputs.from }}" \
