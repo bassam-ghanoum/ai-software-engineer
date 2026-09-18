@@ -7,7 +7,8 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
-
+    # This defines the fallback value if GEMINI_RETRY_DELAY is not found
+    env(GEMINI_RETRY_DELAY): '1' 
 services:
     # default configuration for services in *this* file
     _defaults:
@@ -38,7 +39,3 @@ services:
         alias: App\AI\Agent\CodeReviewAgent
     App\AI\Workflow\CodeReviewWorkflowInterface:
         alias: App\AI\Workflow\CodeReviewWorkflow
-
-parameters:
-    # This defines the fallback value if GEMINI_RETRY_DELAY is not found
-    env(GEMINI_RETRY_DELAY): '1' 
