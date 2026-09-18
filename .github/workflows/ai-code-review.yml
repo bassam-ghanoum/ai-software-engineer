@@ -7,6 +7,10 @@ on:
       - synchronize
       - reopened
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   ai-code-review:
     runs-on: ubuntu-latest
@@ -40,4 +44,19 @@ jobs:
         run: |
           php bin/console ai:review \
             "${{ steps.revisions.outputs.from }}" \
-            "${{ steps.revisions.outputs.to }}"
+            "${{ steps.revisions.outputs.to }}" \
+            | tee ai-review.txt
+
+      - name: Post AI review to pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "## 🤖 AI Code Review"
+            echo
+            cat ai-review.txt
+          } > ai-review-comment.md
+
+          gh pr comment \
+            "${{ github.event.pull_request.number }}" \
+            --body-file ai-review-comment.md
