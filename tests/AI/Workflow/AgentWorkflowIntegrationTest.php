@@ -167,6 +167,7 @@ PHP;
 
         $reviewResult = new ReviewResult([
             new ReviewFinding(
+                1,
                 'high',
                 'bug',
                 'Invalid PHP syntax.',

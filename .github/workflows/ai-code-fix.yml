@@ -16,35 +16,99 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Verify latest AI code review succeeded
+      - name: Find successful AI Code Review run
+        id: review-run
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -e
 
+          echo "Looking for AI Code Review for:"
+          echo "$HEAD_SHA"
+
           RUN_ID=$(gh run list \
             --workflow=ai-code-review.yml \
-            --branch="${{ github.event.pull_request.head.ref }}" \
             --event=pull_request \
-            --limit=20 \
+            --limit=50 \
             --json databaseId,headSha,status,conclusion \
-            --jq '.[] | select(.headSha == "'$HEAD_SHA'" and .status == "completed") | select(.conclusion == "success") | .databaseId' \
+            --jq '.[] |
+              select(.headSha == env.HEAD_SHA) |
+              select(.status == "completed") |
+              select(.conclusion == "success") |
+              .databaseId' \
             | head -n 1)
 
           if [ -z "$RUN_ID" ]; then
-            echo "No successful AI code review was found for the current pull request commit."
-            echo "AI fixes will not be applied."
+            echo "No successful AI Code Review run was found for commit:"
+            echo "$HEAD_SHA"
             exit 1
           fi
 
-          echo "Successful AI code review found: $RUN_ID"
+          echo "Found AI Code Review run:"
+          echo "$RUN_ID"
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download AI review artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.review-run.outputs.run_id }}
+        run: |
+          set -e
+
+          mkdir -p ai-review
+
+          gh run download \
+            "$RUN_ID" \
+            --name "ai-review-${{ github.event.pull_request.head.sha }}" \
+            --dir ai-review
+
+          echo "Downloaded review artifact:"
+          find ai-review -maxdepth 2 -type f -print
+
+      - name: Verify review result
+        env:
+          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -e
+
+          REVIEW_FILE="ai-review/review-result.json"
+
+          if [ ! -f "$REVIEW_FILE" ]; then
+            echo "Review result file was not found:"
+            echo "$REVIEW_FILE"
+            exit 1
+          fi
+
+          REVIEW_SHA=$(php -r '
+            $data = json_decode(
+                file_get_contents($argv[1]),
+                true,
+                512,
+                JSON_THROW_ON_ERROR
+            );
+
+            echo $data["commit_sha"] ?? "";
+          ' "$REVIEW_FILE")
+
+          echo "Expected SHA:"
+          echo "$EXPECTED_SHA"
+
+          echo "Review SHA:"
+          echo "$REVIEW_SHA"
+
+          if [ "$REVIEW_SHA" != "$EXPECTED_SHA" ]; then
+            echo "Review result does not belong to the current PR commit."
+            exit 1
+          fi
+
+          echo "Review result belongs to the current PR commit."
 
       - name: Checkout pull request
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Set up PHP
@@ -71,10 +135,13 @@ jobs:
           php bin/console ai:fix \
             "${{ steps.revisions.outputs.from }}" \
             "${{ steps.revisions.outputs.to }}" \
-            --approved
+            --approved \
+            --review-file=ai-review/review-result.json
 
       - name: Commit and push fixes
         run: |
+          set -e
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -84,5 +151,8 @@ jobs:
           fi
 
           git add -A
+
           git commit -m "Apply AI code fixes"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
+          git push origin \
+            HEAD:${{ github.event.pull_request.head.ref }}

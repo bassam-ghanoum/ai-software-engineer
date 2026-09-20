@@ -12,7 +12,7 @@ use App\AI\File\SourceValidatorInterface;
 use App\AI\Review\ReviewResult;
 use InvalidArgumentException;
 
-final class FixWorkflow
+final class FixWorkflow implements FixWorkflowInterface
 {
     public function __construct(
         private readonly FixAgentInterface $fixAgent,

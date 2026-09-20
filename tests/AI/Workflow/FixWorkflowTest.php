@@ -73,6 +73,7 @@ final class FixWorkflowTest extends TestCase
 
         $review = new ReviewResult([
             new ReviewFinding(
+                1,
                 'high',
                 'bug',
                 'Example bug',
@@ -204,6 +205,7 @@ PHP;
 
         $review = new ReviewResult([
             new ReviewFinding(
+                1,
                 'medium',
                 'maintainability',
                 'Example issue',
@@ -263,6 +265,7 @@ PHP;
 
         $review = new ReviewResult([
             new ReviewFinding(
+                1,
                 'high',
                 'bug',
                 'Example bug',
@@ -321,6 +324,7 @@ PHP;
 
         $review1 = new ReviewResult([
             new ReviewFinding(
+                1,
                 'high',
                 'bug',
                 'Bug in file one',
@@ -330,6 +334,7 @@ PHP;
 
         $review2 = new ReviewResult([
             new ReviewFinding(
+                1,
                 'medium',
                 'maintainability',
                 'Issue in file two',
@@ -453,6 +458,7 @@ PHP;
 
         $review = new ReviewResult([
             new ReviewFinding(
+                1,
                 'critical',
                 'bug',
                 'Example critical issue',
@@ -628,6 +634,7 @@ PHP;
     {
         return new ReviewResult([
             new ReviewFinding(
+                1,
                 'critical',
                 'bug',
                 'Syntax error caused by the unexpected * operator.',
