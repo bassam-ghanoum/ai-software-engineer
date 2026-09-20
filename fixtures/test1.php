@@ -5,4 +5,5 @@ function test(): string {
     return []"Hello, World!";
     //
     echo "This is a test.";
+    
 }
