@@ -1,0 +1,62 @@
+name: AI Code Fix
+
+on:
+  pull_request_review:
+    types:
+      - submitted
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  ai-fix:
+    if: github.event.review.state == 'approved'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, intl
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Determine Git revisions
+        id: revisions
+        run: |
+          echo "from=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          echo "to=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Run AI fix
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+        run: |
+          php bin/console ai:fix \
+            "${{ steps.revisions.outputs.from }}" \
+            "${{ steps.revisions.outputs.to }}" \
+            --approved
+
+      - name: Commit and push fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "No changes were made."
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "Apply AI code fixes"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

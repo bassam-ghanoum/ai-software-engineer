@@ -10,8 +10,10 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
+use Symfony\Component\Console\Helper\QuestionHelper;
 
 #[AsCommand(
     name: 'ai:fix',
@@ -39,6 +41,13 @@ final class AiFixCommand extends Command
             InputArgument::REQUIRED,
             'The ending Git revision.',
         );
+
+        $this->addOption(
+            'approved',
+            null,
+            InputOption::VALUE_NONE,
+            'Skip interactive approval because the developer already approved the GitHub pull request.',
+        );
     }
 
     protected function execute(
@@ -47,6 +56,7 @@ final class AiFixCommand extends Command
     ): int {
         $from = (string) $input->getArgument('from');
         $to = (string) $input->getArgument('to');
+        $approved = $input->getOption('approved');
 
         $output->writeln(sprintf(
             '<info>Reviewing changes from %s to %s...</info>',
@@ -104,14 +114,20 @@ final class AiFixCommand extends Command
             return Command::SUCCESS;
         }
 
-        $helper = $this->getHelper('question');
+        if (!$approved) {
+            $helper = $this->getHelper('question');
 
-        $question = new ConfirmationQuestion(
-            PHP_EOL . 'Apply these fixes? [y/N] ',
-            false,
-        );
+            if (!$helper instanceof QuestionHelper) {
+                throw new \RuntimeException('Question helper is not available.');
+            }
 
-        $approved = $helper->ask($input, $output, $question);
+            $question = new ConfirmationQuestion(
+                PHP_EOL . 'Apply these fixes? [y/N] ',
+                false,
+            );
+
+            $approved = $helper->ask($input, $output, $question);
+        }
 
         if (!$approved) {
             $output->writeln(
