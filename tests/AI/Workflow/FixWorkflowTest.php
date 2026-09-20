@@ -45,6 +45,7 @@ final class FixWorkflowTest extends TestCase
 
         $review = new ReviewResult([
             new ReviewFinding(
+                1,
                 'high',
                 'bug',
                 'Example bug',

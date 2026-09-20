@@ -128,6 +128,7 @@ final class LlmFixScopeValidatorTest extends TestCase
     {
         return new ReviewResult([
             new ReviewFinding(
+                1,
                 'critical',
                 'bug',
                 'Syntax error caused by the unexpected * operator.',

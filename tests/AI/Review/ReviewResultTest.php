@@ -11,6 +11,7 @@ final class ReviewResultTest extends TestCase
     public function testItStoresReviewFindings(): void
     {
         $finding = new ReviewFinding(
+            1,
             severity: 'high',
             category: 'bug',
             message: 'The database connection is not validated.',

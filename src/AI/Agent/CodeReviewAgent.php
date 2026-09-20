@@ -36,6 +36,10 @@ Look for:
 - Missing validation
 - Missing error handling
 
+For every finding, identify the exact 1-based line number in the provided PHP source where the problem occurs.
+
+The line number MUST refer to the actual PHP source code provided below.
+
 Return ONLY valid JSON.
 
 The JSON must have exactly this structure:
@@ -43,6 +47,7 @@ The JSON must have exactly this structure:
 {
   "findings": [
     {
+      "line": 5,
       "severity": "critical|high|medium|low",
       "category": "security|bug|performance|maintainability|validation|error_handling|code_smell",
       "message": "A concise explanation of the problem.",
@@ -50,6 +55,13 @@ The JSON must have exactly this structure:
     }
   ]
 }
+
+Rules for line:
+- "line" must be an integer.
+- "line" must be greater than or equal to 1.
+- "line" must point to the exact line containing the reviewed issue.
+- Do not guess a line number.
+- Use the line number from the provided PHP source.
 
 If there are no findings, return:
 
@@ -67,28 +79,31 @@ $code
 ----------------
 PROMPT;
 
-$json = $this->llm->generateJson($prompt);
+        $json = $this->llm->generateJson($prompt);
 
-try {
-    $data = json_decode(
-        $json,
-        true,
-        512,
-        JSON_THROW_ON_ERROR,
-    );
-} catch (\JsonException $exception) {
-    throw new \RuntimeException(
-        sprintf(
-            "The LLM returned invalid JSON.\nJSON error: %s\nRaw response:\n%s",
-            $exception->getMessage(),
-            $json,
-        ),
-        0,
-        $exception,
-    );
-}
+        try {
+            $data = json_decode(
+                $json,
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            );
+        } catch (\JsonException $exception) {
+            throw new \RuntimeException(
+                sprintf(
+                    "The LLM returned invalid JSON.\nJSON error: %s\nRaw response:\n%s",
+                    $exception->getMessage(),
+                    $json,
+                ),
+                0,
+                $exception,
+            );
+        }
 
-        if (!isset($data['findings']) || !is_array($data['findings'])) {
+        if (
+            !isset($data['findings'])
+            || !is_array($data['findings'])
+        ) {
             throw new \RuntimeException(
                 'The LLM JSON response does not contain a valid findings array.',
             );
@@ -104,6 +119,7 @@ try {
             }
 
             $requiredFields = [
+                'line',
                 'severity',
                 'category',
                 'message',
@@ -111,10 +127,34 @@ try {
             ];
 
             foreach ($requiredFields as $field) {
-                if (
-                    !array_key_exists($field, $finding)
-                    || !is_string($finding[$field])
-                ) {
+                if (!array_key_exists($field, $finding)) {
+                    throw new \RuntimeException(
+                        sprintf(
+                            'Review finding field "%s" is missing or invalid.',
+                            $field,
+                        ),
+                    );
+                }
+            }
+
+            if (
+                !is_int($finding['line'])
+                || $finding['line'] < 1
+            ) {
+                throw new \RuntimeException(
+                    'Review finding field "line" is missing or invalid.',
+                );
+            }
+
+            foreach (
+                [
+                    'severity',
+                    'category',
+                    'message',
+                    'suggestion',
+                ] as $field
+            ) {
+                if (!is_string($finding[$field])) {
                     throw new \RuntimeException(
                         sprintf(
                             'Review finding field "%s" is missing or invalid.',
@@ -125,6 +165,7 @@ try {
             }
 
             $findings[] = new ReviewFinding(
+                line: $finding['line'],
                 severity: $finding['severity'],
                 category: $finding['category'],
                 message: $finding['message'],

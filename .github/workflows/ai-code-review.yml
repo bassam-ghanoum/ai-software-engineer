@@ -68,7 +68,17 @@ jobs:
           php bin/console ai:review \
             "${{ steps.revisions.outputs.from }}" \
             "${{ steps.revisions.outputs.to }}" \
+            --output=review-result.json \
             | tee ai-review.txt
+
+      - name: Upload review result
+        if: steps.agent2-check.outputs.is_agent2_commit != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-${{ github.event.pull_request.head.sha }}
+          path: review-result.json
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Post AI review to pull request
         if: success() && steps.agent2-check.outputs.is_agent2_commit != 'true'

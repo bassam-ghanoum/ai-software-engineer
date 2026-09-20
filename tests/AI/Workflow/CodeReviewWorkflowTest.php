@@ -38,6 +38,7 @@ final class CodeReviewWorkflowTest extends TestCase
                     if (str_contains($code, 'UserService')) {
                         return new ReviewResult([
                             new ReviewFinding(
+                                1,
                                 severity: 'high',
                                 category: 'security',
                                 message: 'Security issue in service.',

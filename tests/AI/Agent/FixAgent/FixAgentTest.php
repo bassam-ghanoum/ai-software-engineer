@@ -64,6 +64,7 @@ PHP;
         $agent = new FixAgent($llm);
 
         $finding = new ReviewFinding(
+            1,
             'high',
             'security',
             'SQL injection',
@@ -100,12 +101,14 @@ PHP;
 
         $findings = [
             new ReviewFinding(
+                1,
                 'critical',
                 'security',
                 'SQL injection',
                 'SQL security fix',
             ),
             new ReviewFinding(
+                1,
                 'high',
                 'bug',
                 'Null pointer',
@@ -134,6 +137,7 @@ PHP;
         ->willReturn($fixedSource); 
         $agent = new FixAgent($llm); 
         $finding = new ReviewFinding( 
+            1,
             'high', 
             'bug', 
             'Incorrect return value', 

@@ -41,6 +41,7 @@ function test(): array
 PHP;
 
         $reviewFinding = new ReviewFinding(
+            1,
             'high',
             'bug',
             'Invalid PHP syntax.',

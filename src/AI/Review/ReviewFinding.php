@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\AI\Review;
 
 final class ReviewFinding
@@ -22,11 +24,18 @@ final class ReviewFinding
     ];
 
     public function __construct(
+        private readonly int $line,
         private readonly string $severity,
         private readonly string $category,
         private readonly string $message,
         private readonly string $suggestion,
     ) {
+        if ($line < 1) {
+            throw new \InvalidArgumentException(
+                'Review finding line must be greater than zero.'
+            );
+        }
+
         if (!in_array($severity, self::ALLOWED_SEVERITIES, true)) {
             throw new \InvalidArgumentException(
                 'Invalid review finding severity: ' . $severity
@@ -50,6 +59,11 @@ final class ReviewFinding
                 'Review finding suggestion cannot be empty.'
             );
         }
+    }
+
+    public function getLine(): int
+    {
+        return $this->line;
     }
 
     public function getSeverity(): string

@@ -1,136 +1,182 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Tests\Command;
 
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
+use App\AI\Review\ReviewResultSerializer;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use App\Command\AiReviewCommand;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Tester\CommandTester;
 
 final class AiReviewCommandTest extends TestCase
 {
-    public function testItReviewsChangedFilesAndDisplaysFindings(): void
+    public function testItWritesSerializedReviewResultToOutputFile(): void
     {
-        $workflow = $this->createMock(CodeReviewWorkflowInterface::class);
-
-        $finding = new ReviewFinding(
-            severity: 'high',
-            category: 'security',
-            message: 'User input is used directly in a database query.',
-            suggestion: 'Use prepared statements or Doctrine parameters.',
+        $workflow = $this->createMock(
+            CodeReviewWorkflowInterface::class
         );
 
         $workflow
             ->expects(self::once())
             ->method('reviewChanges')
-            ->with('HEAD~1', 'HEAD')
+            ->with('FROM_SHA', 'TO_SHA')
             ->willReturn([
-                'src/Service/UserService.php' => new ReviewResult([
-                    $finding,
+                'fixtures/test1.php' => new ReviewResult([
+                    new ReviewFinding(
+                        line: 4,
+                        severity: 'high',
+                        category: 'bug',
+                        message: 'Test finding.',
+                        suggestion: 'Fix the bug.',
+                    ),
                 ]),
             ]);
 
-        $command = new AiReviewCommand($workflow);
+        $serializer = new ReviewResultSerializer();
 
-        $commandTester = new CommandTester($command);
-
-        $exitCode = $commandTester->execute([
-            'from' => 'HEAD~1',
-            'to' => 'HEAD',
-        ]);
-
-        self::assertSame(0, $exitCode);
-
-        $output = $commandTester->getDisplay();
-
-        self::assertStringContainsString(
-            'Reviewing PHP changes: HEAD~1 → HEAD',
-            $output
+        $outputFile = tempnam(
+            sys_get_temp_dir(),
+            'ai-review-',
         );
 
-        self::assertStringContainsString(
-            'File: src/Service/UserService.php',
-            $output
-        );
+        self::assertNotFalse($outputFile);
 
-        self::assertStringContainsString(
-            '[HIGH] [security]',
-            $output
-        );
+        try {
+            $command = new AiReviewCommand(
+                $workflow,
+                $serializer,
+            );
 
-        self::assertStringContainsString(
-            'User input is used directly in a database query.',
-            $output
-        );
+            $application = new Application();
 
-        self::assertStringContainsString(
-            'Suggestion: Use prepared statements or Doctrine parameters.',
-            $output
-        );
-    }
+            $application->addCommand($command);
 
-    public function testItDisplaysNoFindings(): void
-    {
-        $workflow = $this->createMock(CodeReviewWorkflowInterface::class);
+            $commandTester = new CommandTester(
+                $application->find('ai:review')
+            );
 
-        $workflow
-            ->expects(self::once())
-            ->method('reviewChanges')
-            ->with('HEAD~1', 'HEAD')
-            ->willReturn([
-                'src/Service/UserService.php' => new ReviewResult([]),
+            $exitCode = $commandTester->execute([
+                'from' => 'FROM_SHA',
+                'to' => 'TO_SHA',
+                '--output' => $outputFile,
             ]);
 
-        $command = new AiReviewCommand($workflow);
+            self::assertSame(
+                0,
+                $exitCode,
+            );
 
-        $commandTester = new CommandTester($command);
+            self::assertFileExists($outputFile);
 
-        $exitCode = $commandTester->execute([
-            'from' => 'HEAD~1',
-            'to' => 'HEAD',
-        ]);
+            $json = file_get_contents($outputFile);
 
-        self::assertSame(0, $exitCode);
+            self::assertIsString($json);
 
-        $output = $commandTester->getDisplay();
+            $data = json_decode(
+                $json,
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            );
 
-        self::assertStringContainsString(
-            'File: src/Service/UserService.php',
-            $output
-        );
+            self::assertSame(
+                'TO_SHA',
+                $data['commit_sha'],
+            );
 
-        self::assertStringContainsString(
-            'No findings.',
-            $output
-        );
+            self::assertArrayHasKey(
+                'fixtures/test1.php',
+                $data['reviews'],
+            );
+
+            self::assertSame(
+                4,
+                $data['reviews']['fixtures/test1.php']['findings'][0]['line'],
+            );
+        } finally {
+            if (is_file($outputFile)) {
+                unlink($outputFile);
+            }
+        }
     }
 
-    public function testItDisplaysMessageWhenNoPhpFilesChanged(): void
+    public function testItCanWriteEmptyReviewResult(): void
     {
-        $workflow = $this->createMock(CodeReviewWorkflowInterface::class);
+        $workflow = $this->createMock(
+            CodeReviewWorkflowInterface::class
+        );
 
         $workflow
             ->expects(self::once())
             ->method('reviewChanges')
-            ->with('HEAD~1', 'HEAD')
+            ->with('FROM_SHA', 'TO_SHA')
             ->willReturn([]);
 
-        $command = new AiReviewCommand($workflow);
+        $serializer = new ReviewResultSerializer();
 
-        $commandTester = new CommandTester($command);
-
-        $exitCode = $commandTester->execute([
-            'from' => 'HEAD~1',
-            'to' => 'HEAD',
-        ]);
-
-        self::assertSame(0, $exitCode);
-
-        self::assertStringContainsString(
-            'No changed PHP files found.',
-            $commandTester->getDisplay()
+        $outputFile = tempnam(
+            sys_get_temp_dir(),
+            'ai-review-',
         );
+
+        self::assertNotFalse($outputFile);
+
+        try {
+            $command = new AiReviewCommand(
+                $workflow,
+                $serializer,
+            );
+
+            $application = new Application();
+
+            $application->addCommand($command);
+
+            $commandTester = new CommandTester(
+                $application->find('ai:review')
+            );
+
+            $exitCode = $commandTester->execute([
+                'from' => 'FROM_SHA',
+                'to' => 'TO_SHA',
+                '--output' => $outputFile,
+            ]);
+
+            self::assertSame(
+                0,
+                $exitCode,
+            );
+
+            self::assertFileExists($outputFile);
+
+            $json = file_get_contents($outputFile);
+
+            self::assertIsString($json);
+
+            $data = json_decode(
+                $json,
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            );
+
+            self::assertSame(
+                'TO_SHA',
+                $data['commit_sha'],
+            );
+
+            self::assertSame(
+                [],
+                $data['reviews'],
+            );
+        } finally {
+            if (is_file($outputFile)) {
+                unlink($outputFile);
+            }
+        }
     }
 }
