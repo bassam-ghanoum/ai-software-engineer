@@ -1,26 +1,57 @@
 name: AI Code Fix
 
 on:
-  pull_request_review:
+  issue_comment:
     types:
-      - submitted
+      - created
 
 permissions:
   contents: write
   pull-requests: read
+  issues: read
   actions: read
 
 jobs:
   ai-fix:
-    if: github.event.review.state == 'approved'
+    if: >
+      github.event.issue.pull_request &&
+      github.event.comment.user.login == github.event.issue.user.login &&
+      startsWith(github.event.comment.body, '@ai-fix approve')
     runs-on: ubuntu-latest
 
     steps:
+      - name: Get pull request information
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -e
+
+          gh pr view "$PR_NUMBER" \
+            --json headRefOid,headRefName,baseRefOid,author \
+            > pr.json
+
+          HEAD_SHA=$(jq -r '.headRefOid' pr.json)
+          HEAD_REF=$(jq -r '.headRefName' pr.json)
+          BASE_SHA=$(jq -r '.baseRefOid' pr.json)
+          AUTHOR=$(jq -r '.author.login' pr.json)
+
+          echo "Pull request: #$PR_NUMBER"
+          echo "Author: $AUTHOR"
+          echo "Head SHA: $HEAD_SHA"
+          echo "Head branch: $HEAD_REF"
+          echo "Base SHA: $BASE_SHA"
+
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+
       - name: Find successful AI Code Review run
         id: review-run
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -e
 
@@ -61,7 +92,7 @@ jobs:
 
           gh run download \
             "$RUN_ID" \
-            --name "ai-review-${{ github.event.pull_request.head.sha }}" \
+            --name "ai-review-${{ steps.pr.outputs.head_sha }}" \
             --dir ai-review
 
           echo "Downloaded review artifact:"
@@ -69,7 +100,7 @@ jobs:
 
       - name: Verify review result
         env:
-          EXPECTED_SHA: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -e
 
@@ -108,7 +139,7 @@ jobs:
       - name: Checkout pull request
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ steps.pr.outputs.head_sha }}
           fetch-depth: 0
 
       - name: Set up PHP
@@ -121,20 +152,14 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
-      - name: Determine Git revisions
-        id: revisions
-        run: |
-          echo "from=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
-          echo "to=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-
       - name: Run AI fix
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
         run: |
           php bin/console ai:fix \
-            "${{ steps.revisions.outputs.from }}" \
-            "${{ steps.revisions.outputs.to }}" \
+            "${{ steps.pr.outputs.base_sha }}" \
+            "${{ steps.pr.outputs.head_sha }}" \
             --approved \
             --review-file=ai-review/review-result.json
 
@@ -155,4 +180,4 @@ jobs:
           git commit -m "Apply AI code fixes"
 
           git push origin \
-            HEAD:${{ github.event.pull_request.head.ref }}
+            HEAD:${{ steps.pr.outputs.head_ref }}
