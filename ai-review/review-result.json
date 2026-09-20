@@ -1,0 +1,47 @@
+{
+    "commit_sha": "1e6c94f50c8f978945b2ba310573c8f798a24e88",
+    "reviews": {
+        "fixtures/test1.php": {
+            "findings": [
+                {
+                    "line": 5,
+                    "severity": "critical",
+                    "category": "bug",
+                    "message": "Syntax error due to unexpected array bracket before the string literal, and unreachable code after the return statement.",
+                    "suggestion": "Remove the stray array bracket '[' and fix the syntax error to return the string properly."
+                }
+            ]
+        },
+        "src/AI/Agent/FixAgent/FixAgent.php": {
+            "findings": []
+        },
+        "src/AI/Workflow/FixWorkflow.php": {
+            "findings": [
+                {
+                    "line": 77,
+                    "severity": "low",
+                    "category": "code_smell",
+                    "message": "Direct use of echo statements inside a workflow class tightly couples the business logic with output generation and makes testing difficult.",
+                    "suggestion": "Replace echo statements with a Psr\\Log\\LoggerInterface or a dedicated output/console reporter service."
+                },
+                {
+                    "line": 82,
+                    "severity": "low",
+                    "category": "code_smell",
+                    "message": "Direct use of echo statements inside a workflow class tightly couples the business logic with output generation and makes testing difficult.",
+                    "suggestion": "Replace echo statements with a Psr\\Log\\LoggerInterface or a dedicated output/console reporter service."
+                },
+                {
+                    "line": 84,
+                    "severity": "low",
+                    "category": "code_smell",
+                    "message": "Direct use of echo statements inside a workflow class tightly couples the business logic with output generation and makes testing difficult.",
+                    "suggestion": "Replace echo statements with a Psr\\Log\\LoggerInterface or a dedicated output/console reporter service."
+                }
+            ]
+        },
+        "tests/AI/Agent/FixAgent/FixAgentTest.php": {
+            "findings": []
+        }
+    }
+}

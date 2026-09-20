@@ -11,6 +11,7 @@ use App\AI\File\SourceFileProviderInterface;
 use App\AI\File\SourceValidatorInterface;
 use App\AI\Review\ReviewResult;
 use InvalidArgumentException;
+use Psr\Log\LoggerInterface;
 
 final class FixWorkflow implements FixWorkflowInterface
 {
@@ -19,6 +20,7 @@ final class FixWorkflow implements FixWorkflowInterface
         private readonly SourceFileProviderInterface $sourceFileProvider,
         private readonly SourceValidatorInterface $sourceValidator,
         private readonly FixScopeValidatorInterface $fixScopeValidator,
+        private readonly ?LoggerInterface $logger = null,
     ) {
     }
 
@@ -75,17 +77,19 @@ final class FixWorkflow implements FixWorkflowInterface
             $reviewResult,
         );
 
-        echo sprintf(
-            "\n--- Agent 2 generated source for %s ---\n",
-            $filePath,
-        );
+        if ($this->logger !== null) {
+            $this->logger->info(sprintf(
+                "\n--- Agent 2 generated source for %s ---\n",
+                $filePath,
+            ));
 
-        echo $fixedSource;
+            $this->logger->info($fixedSource);
 
-        echo sprintf(
-            "\n--- End Agent 2 generated source for %s ---\n\n",
-            $filePath,
-        );
+            $this->logger->info(sprintf(
+                "\n--- End Agent 2 generated source for %s ---\n\n",
+                $filePath,
+            ));
+        }
 
         if ($fixedSource === $sourceCode) {
             return null;
