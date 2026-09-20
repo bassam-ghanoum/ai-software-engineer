@@ -21,7 +21,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check whether commit was created by Agent 2
+        id: agent2-check
+        run: |
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B "${{ github.event.pull_request.head.sha }}")
+
+          echo "Latest commit:"
+          echo "${COMMIT_MESSAGE}"
+
+          if [ "$COMMIT_MESSAGE" = "Apply AI code fixes" ]; then
+            echo "is_agent2_commit=true" >> "$GITHUB_OUTPUT"
+            echo "This commit was created by Agent 2. Skipping AI Code Review."
+          else
+            echo "is_agent2_commit=false" >> "$GITHUB_OUTPUT"
+            echo "This commit was created by the developer. AI Code Review will run."
+          fi
+
       - name: Set up PHP
+        if: steps.agent2-check.outputs.is_agent2_commit != 'true'
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
@@ -29,15 +46,18 @@ jobs:
           coverage: none
 
       - name: Install dependencies
+        if: steps.agent2-check.outputs.is_agent2_commit != 'true'
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Determine Git revisions
+        if: steps.agent2-check.outputs.is_agent2_commit != 'true'
         id: revisions
         run: |
           echo "from=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
           echo "to=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Run AI code review
+        if: steps.agent2-check.outputs.is_agent2_commit != 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
@@ -51,7 +71,7 @@ jobs:
             | tee ai-review.txt
 
       - name: Post AI review to pull request
-        if: success()
+        if: success() && steps.agent2-check.outputs.is_agent2_commit != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
