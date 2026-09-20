@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  actions: read
 
 jobs:
   ai-fix:
@@ -15,6 +16,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Verify latest AI code review succeeded
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -e
+
+          RUN_ID=$(gh run list \
+            --workflow=ai-code-review.yml \
+            --branch="${{ github.event.pull_request.head.ref }}" \
+            --event=pull_request \
+            --limit=20 \
+            --json databaseId,headSha,status,conclusion \
+            --jq '.[] | select(.headSha == "'$HEAD_SHA'" and .status == "completed") | select(.conclusion == "success") | .databaseId' \
+            | head -n 1)
+
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful AI code review was found for the current pull request commit."
+            echo "AI fixes will not be applied."
+            exit 1
+          fi
+
+          echo "Successful AI code review found: $RUN_ID"
+
       - name: Checkout pull request
         uses: actions/checkout@v4
         with:
