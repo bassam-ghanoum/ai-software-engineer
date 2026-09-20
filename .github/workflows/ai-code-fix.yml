@@ -25,10 +25,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.issue.number }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -e
 
           gh pr view "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
             --json headRefOid,headRefName,baseRefOid,author \
             > pr.json
 
@@ -52,6 +54,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -e
 
@@ -59,6 +62,7 @@ jobs:
           echo "$HEAD_SHA"
 
           RUN_ID=$(gh run list \
+            --repo "$REPOSITORY" \
             --workflow=ai-code-review.yml \
             --event=pull_request \
             --limit=50 \
@@ -85,6 +89,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ steps.review-run.outputs.run_id }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -e
 
@@ -92,7 +98,8 @@ jobs:
 
           gh run download \
             "$RUN_ID" \
-            --name "ai-review-${{ steps.pr.outputs.head_sha }}" \
+            --repo "$REPOSITORY" \
+            --name "ai-review-${HEAD_SHA}" \
             --dir ai-review
 
           echo "Downloaded review artifact:"
