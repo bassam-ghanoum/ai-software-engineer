@@ -105,19 +105,25 @@ jobs:
           echo "Downloaded review artifact:"
           find ai-review -maxdepth 2 -type f -print
 
-      - name: Verify review result
+      - name: Locate and verify review result
+        id: review-file
         env:
           EXPECTED_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
           set -e
 
-          REVIEW_FILE="ai-review/review-result.json"
+          echo "Downloaded artifact contents:"
+          find ai-review -type f -print
 
-          if [ ! -f "$REVIEW_FILE" ]; then
-            echo "Review result file was not found:"
-            echo "$REVIEW_FILE"
+          REVIEW_FILE=$(find ai-review -type f -name 'review-result.json' -print -quit)
+
+          if [ -z "$REVIEW_FILE" ]; then
+            echo "review-result.json was not found in the downloaded artifact."
             exit 1
           fi
+
+          echo "Review result found:"
+          echo "$REVIEW_FILE"
 
           REVIEW_SHA=$(php -r '
             $data = json_decode(
@@ -142,6 +148,8 @@ jobs:
           fi
 
           echo "Review result belongs to the current PR commit."
+
+          echo "review_file=$REVIEW_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Checkout pull request
         uses: actions/checkout@v4
@@ -168,7 +176,7 @@ jobs:
             "${{ steps.pr.outputs.base_sha }}" \
             "${{ steps.pr.outputs.head_sha }}" \
             --approved \
-            --review-file=ai-review/review-result.json
+            --review-file="${{ steps.review-file.outputs.review_file }}"
 
       - name: Commit and push fixes
         run: |
