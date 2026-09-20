@@ -33,24 +33,26 @@ final class FixAgent implements FixAgentInterface
     }
 
     private function buildPrompt(
-        string $filePath,
-        string $sourceCode,
-        ReviewResult $reviewResult,
-    ): string {
-        $findings = [];
+    string $filePath,
+    string $sourceCode,
+    ReviewResult $reviewResult,
+): string {
+    $findings = [];
 
-        foreach ($reviewResult->getFindings() as $finding) {
-            $findings[] = sprintf(
-                "- Line %d [%s] [%s]: %s\n  Suggestion: %s",
-                $finding->getLine(),
-                strtoupper($finding->getSeverity()),
-                $finding->getCategory(),
-                $finding->getMessage(),
-                $finding->getSuggestion(),
-            );
-        }
+    foreach ($reviewResult->getFindings() as $finding) {
+        $findings[] = sprintf(
+            "- Line %d [%s] [%s]: %s\n  Suggestion: %s",
+            $finding->getLine(),
+            strtoupper($finding->getSeverity()),
+            $finding->getCategory(),
+            $finding->getMessage(),
+            $finding->getSuggestion(),
+        );
+    }
 
-        return <<<PROMPT
+    $formattedFindings = $this->formatFindings($findings);
+
+    return <<<PROMPT
 You are Agent 2, an AI code-fixing agent.
 
 Your job is to apply ONLY the developer-approved review findings listed below.
@@ -66,7 +68,7 @@ FILE:
 {$filePath}
 
 APPROVED REVIEW FINDINGS:
-{$this->formatFindings($findings)}
+{$formattedFindings}
 
 ORIGINAL SOURCE:
 ---BEGIN SOURCE---
@@ -121,7 +123,7 @@ Before returning the source, compare it mentally with the original source and
 ensure that every change is directly required by one of the approved findings.
 
 PROMPT;
-    }
+}
 
     /**
      * @param array<int, string> $findings

@@ -75,6 +75,18 @@ final class FixWorkflow implements FixWorkflowInterface
             $reviewResult,
         );
 
+        echo sprintf(
+            "\n--- Agent 2 generated source for %s ---\n",
+            $filePath,
+        );
+
+        echo $fixedSource;
+
+        echo sprintf(
+            "\n--- End Agent 2 generated source for %s ---\n\n",
+            $filePath,
+        );
+
         if ($fixedSource === $sourceCode) {
             return null;
         }
