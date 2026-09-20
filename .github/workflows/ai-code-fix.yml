@@ -100,10 +100,26 @@ jobs:
             "$RUN_ID" \
             --repo "$REPOSITORY" \
             --name "ai-review-${HEAD_SHA}" \
-            --dir ai-review
+            --dir ai-review-download
 
-          echo "Downloaded review artifact:"
-          find ai-review -maxdepth 2 -type f -print
+          echo "Downloaded artifact:"
+          find ai-review-download -type f -print
+
+          ZIP_FILE=$(find ai-review-download -type f -name '*.zip' -print -quit)
+
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Artifact ZIP found:"
+            echo "$ZIP_FILE"
+
+            unzip -o "$ZIP_FILE" -d ai-review
+          else
+            echo "No ZIP file found. Checking whether the artifact was already extracted."
+
+            find ai-review-download -type f -exec cp {} ai-review/ \;
+          fi
+
+          echo "Extracted review artifact:"
+          find ai-review -type f -print
 
       - name: Locate and verify review result
         id: review-file
