@@ -86,43 +86,15 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Download AI review artifact
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ steps.review-run.outputs.run_id }}
-          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -e
+        uses: actions/download-artifact@v5
+        with:
+          name: ai-review-${{ steps.pr.outputs.head_sha }}
+          path: ai-review
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.review-run.outputs.run_id }}
 
-          mkdir -p ai-review
-
-          gh run download \
-            "$RUN_ID" \
-            --repo "$REPOSITORY" \
-            --name "ai-review-${HEAD_SHA}" \
-            --dir ai-review-download
-
-          echo "Downloaded artifact:"
-          find ai-review-download -type f -print
-
-          ZIP_FILE=$(find ai-review-download -type f -name '*.zip' -print -quit)
-
-          if [ -n "$ZIP_FILE" ]; then
-            echo "Artifact ZIP found:"
-            echo "$ZIP_FILE"
-
-            unzip -o "$ZIP_FILE" -d ai-review
-          else
-            echo "No ZIP file found. Checking whether the artifact was already extracted."
-
-            find ai-review-download -type f -exec cp {} ai-review/ \;
-          fi
-
-          echo "Extracted review artifact:"
-          find ai-review -type f -print
-
-      - name: Locate and verify review result
-        id: review-file
+      - name: Verify downloaded review result
         env:
           EXPECTED_SHA: ${{ steps.pr.outputs.head_sha }}
         run: |
@@ -131,10 +103,11 @@ jobs:
           echo "Downloaded artifact contents:"
           find ai-review -type f -print
 
-          REVIEW_FILE=$(find ai-review -type f -name 'review-result.json' -print -quit)
+          REVIEW_FILE="ai-review/review-result.json"
 
-          if [ -z "$REVIEW_FILE" ]; then
-            echo "review-result.json was not found in the downloaded artifact."
+          if [ ! -f "$REVIEW_FILE" ]; then
+            echo "Review result file was not found:"
+            echo "$REVIEW_FILE"
             exit 1
           fi
 
@@ -165,8 +138,6 @@ jobs:
 
           echo "Review result belongs to the current PR commit."
 
-          echo "review_file=$REVIEW_FILE" >> "$GITHUB_OUTPUT"
-
       - name: Checkout pull request
         uses: actions/checkout@v4
         with:
@@ -192,7 +163,7 @@ jobs:
             "${{ steps.pr.outputs.base_sha }}" \
             "${{ steps.pr.outputs.head_sha }}" \
             --approved \
-            --review-file="${{ steps.review-file.outputs.review_file }}"
+            --review-file="ai-review/review-result.json"
 
       - name: Commit and push fixes
         run: |
