@@ -85,6 +85,12 @@ jobs:
 
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head_sha }}
+          fetch-depth: 0
+
       - name: Download AI review artifact
         uses: actions/download-artifact@v5
         with:
@@ -137,12 +143,6 @@ jobs:
           fi
 
           echo "Review result belongs to the current PR commit."
-
-      - name: Checkout pull request
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.pr.outputs.head_sha }}
-          fetch-depth: 0
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
