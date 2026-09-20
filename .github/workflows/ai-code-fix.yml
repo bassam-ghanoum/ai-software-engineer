@@ -48,6 +48,28 @@ jobs:
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
           echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
           echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+      
+      - name: Inspect AI Code Review run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.review-run.outputs.run_id }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -e
+
+          echo "AI Code Review run:"
+          echo "$RUN_ID"
+
+          echo "Artifacts in this run:"
+
+          gh api \
+            "repos/${REPOSITORY}/actions/runs/${RUN_ID}/artifacts" \
+            --jq '.artifacts[] | {
+              name: .name,
+              id: .id,
+              size_in_bytes: .size_in_bytes,
+              expired: .expired
+            }'
 
       - name: Find successful AI Code Review run
         id: review-run
@@ -64,24 +86,24 @@ jobs:
           RUN_ID=$(gh run list \
             --repo "$REPOSITORY" \
             --workflow=ai-code-review.yml \
-            --event=pull_request \
-            --limit=50 \
+            --limit=100 \
             --json databaseId,headSha,status,conclusion \
-            --jq '.[] |
-              select(.headSha == env.HEAD_SHA) |
-              select(.status == "completed") |
-              select(.conclusion == "success") |
-              .databaseId' \
+            --jq --arg SHA "$HEAD_SHA" '
+              .[]
+              | select(.headSha == $SHA)
+              | select(.status == "completed")
+              | select(.conclusion == "success")
+              | .databaseId
+            ' \
             | head -n 1)
 
           if [ -z "$RUN_ID" ]; then
-            echo "No successful AI Code Review run was found for commit:"
-            echo "$HEAD_SHA"
+            echo "No successful AI Code Review run was found."
+            echo "Expected SHA: $HEAD_SHA"
             exit 1
           fi
 
-          echo "Found AI Code Review run:"
-          echo "$RUN_ID"
+          echo "Found AI Code Review run: $RUN_ID"
 
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
@@ -158,6 +180,7 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_RETRY_DELAY: ${{ vars.GEMINI_RETRY_DELAY }}
         run: |
           php bin/console ai:fix \
             "${{ steps.pr.outputs.base_sha }}" \
