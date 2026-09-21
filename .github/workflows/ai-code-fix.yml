@@ -206,6 +206,9 @@ jobs:
             "${{ steps.pr.outputs.head_sha }}" \
             --approved \
             --review-file="ai-review/review-result.json"
+      - name: Remove AI review artifact from working tree
+        run: |
+          rm -rf ai-review
 
       - name: Commit and push fixes
         run: |
