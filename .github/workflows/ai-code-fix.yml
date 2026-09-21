@@ -5,6 +5,10 @@ on:
     types:
       - created
 
+concurrency:
+  group: ai-fix-pr-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: read
