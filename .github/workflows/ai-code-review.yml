@@ -2,17 +2,16 @@ name: AI Code Review
 
 on:
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   ai-code-review:
+    name: ai-code-review
     runs-on: ubuntu-latest
 
     steps:
@@ -21,9 +20,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check whether commit was created by Agent 2
-        id: agent2-check
+      - name: Detect Agent 2 commit
+        id: agent2
+        shell: bash
         run: |
+          set -euo pipefail
+
           COMMIT_MESSAGE=$(git log -1 --pretty=%B "${{ github.event.pull_request.head.sha }}")
 
           echo "Latest commit:"
@@ -37,42 +39,138 @@ jobs:
             echo "This commit was created by the developer. AI Code Review will run."
           fi
 
-      - name: Set up PHP
-        if: steps.agent2-check.outputs.is_agent2_commit != 'true'
+      - name: Setup PHP
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
           extensions: mbstring, intl
           coverage: none
+          ini-file: production
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        if: steps.agent2-check.outputs.is_agent2_commit != 'true'
-        run: composer install --no-interaction --prefer-dist --no-progress
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        run: composer install --no-interaction --no-progress --prefer-dist
 
-      - name: Determine Git revisions
-        if: steps.agent2-check.outputs.is_agent2_commit != 'true'
-        id: revisions
-        run: |
-          echo "from=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
-          echo "to=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
-
-      - name: Run AI code review
-        if: steps.agent2-check.outputs.is_agent2_commit != 'true'
+      - name: Run AI Code Review
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          GEMINI_RETRY_DELAY: ${{ vars.GEMINI_RETRY_DELAY }}
+          GEMINI_RETRY_DELAY: 1
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
+
+          echo "Reviewing PHP changes: $BASE_SHA → $HEAD_SHA"
 
           php bin/console ai:review \
-            "${{ steps.revisions.outputs.from }}" \
-            "${{ steps.revisions.outputs.to }}" \
+            "$BASE_SHA" \
+            "$HEAD_SHA" \
             --output=review-result.json \
             | tee ai-review.txt
 
-      - name: Upload review result
-        if: steps.agent2-check.outputs.is_agent2_commit != 'true'
+          test -f review-result.json
+
+          echo "Binding review-result.json to:"
+          echo "commit_sha = $HEAD_SHA"
+          echo "base_sha   = $BASE_SHA"
+
+          php -r '
+          $file = "review-result.json";
+
+          $data = json_decode(
+              file_get_contents($file),
+              true,
+              512,
+              JSON_THROW_ON_ERROR
+          );
+
+          $data["commit_sha"] = $data["commit_sha"] ?? getenv("HEAD_SHA");
+          $data["base_sha"] = getenv("BASE_SHA");
+
+          file_put_contents(
+              $file,
+              json_encode(
+                  $data,
+                  JSON_PRETTY_PRINT |
+                  JSON_UNESCAPED_SLASHES |
+                  JSON_THROW_ON_ERROR
+              ) . PHP_EOL
+          );
+          '
+
+      - name: Validate review result
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REVIEW_FILE="review-result.json"
+          EXPECTED_SHA="${{ github.event.pull_request.head.sha }}"
+          EXPECTED_BASE_SHA="${{ github.event.pull_request.base.sha }}"
+
+          test -s "$REVIEW_FILE"
+
+          php -r '
+          $data = json_decode(
+              file_get_contents($argv[1]),
+              true,
+              512,
+              JSON_THROW_ON_ERROR
+          );
+
+          foreach (["commit_sha", "base_sha"] as $field) {
+              if (
+                  !isset($data[$field]) ||
+                  !is_string($data[$field]) ||
+                  $data[$field] === ""
+              ) {
+                  fwrite(
+                      STDERR,
+                      "Missing or invalid {$field} in review result.\n"
+                  );
+                  exit(1);
+              }
+          }
+
+          if (
+              isset($data["findings"]) &&
+              !is_array($data["findings"])
+          ) {
+              fwrite(
+                  STDERR,
+                  "Invalid findings structure.\n"
+              );
+              exit(1);
+          }
+          ' "$REVIEW_FILE"
+
+          REVIEW_SHA=$(jq -r '.commit_sha' "$REVIEW_FILE")
+          REVIEW_BASE_SHA=$(jq -r '.base_sha' "$REVIEW_FILE")
+
+          echo "Expected commit SHA: $EXPECTED_SHA"
+          echo "Review commit SHA:   $REVIEW_SHA"
+          echo "Expected base SHA:   $EXPECTED_BASE_SHA"
+          echo "Review base SHA:     $REVIEW_BASE_SHA"
+
+          if [ "$REVIEW_SHA" != "$EXPECTED_SHA" ]; then
+            echo "Review result does not belong to the current PR commit."
+            exit 1
+          fi
+
+          if [ "$REVIEW_BASE_SHA" != "$EXPECTED_BASE_SHA" ]; then
+            echo "Review result belongs to a different PR base."
+            exit 1
+          fi
+
+          echo "Review result is bound to the current PR HEAD and BASE."
+
+      - name: Upload review artifact
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ai-review-${{ github.event.pull_request.head.sha }}
@@ -80,17 +178,305 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Post AI review to pull request
-        if: success() && steps.agent2-check.outputs.is_agent2_commit != 'true'
+      - name: Prepare changed lines
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
         run: |
-          {
-            echo "## 🤖 AI Code Review"
-            echo
-            cat ai-review.txt
-          } > ai-review-comment.md
+          set -euo pipefail
 
-          gh pr comment \
-            "${{ github.event.pull_request.number }}" \
-            --body-file ai-review-comment.md
+          git diff \
+            --unified=0 \
+            --no-color \
+            "$BASE_SHA" \
+            "$HEAD_SHA" \
+            -- '*.php' \
+            > changed-lines.diff
+
+          echo "Changed PHP diff prepared."
+
+      - name: Post line review comments
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          php <<'PHP'
+          <?php
+
+          declare(strict_types=1);
+
+          $reviewFile = 'review-result.json';
+          $diffFile = 'changed-lines.diff';
+
+          $data = json_decode(
+              file_get_contents($reviewFile),
+              true,
+              512,
+              JSON_THROW_ON_ERROR
+          );
+
+          $diff = file_get_contents($diffFile);
+
+          /*
+           * Build a map containing only lines that were added
+           * to the PR:
+           *
+           * [
+           *     'src/Example.php' => [4, 5, 6],
+           * ]
+           */
+          $changedLines = [];
+          $currentFile = null;
+
+          foreach (preg_split('/\R/', $diff) as $line) {
+              if (preg_match(
+                  '/^\+\+\+ b\/(.+)$/',
+                  $line,
+                  $matches
+              )) {
+                  $currentFile = $matches[1];
+                  continue;
+              }
+
+              if (preg_match(
+                  '/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/',
+                  $line,
+                  $matches
+              )) {
+                  $newStart = (int) $matches[1];
+                  $newCount = isset($matches[2])
+                      ? (int) $matches[2]
+                      : 1;
+
+                  if ($currentFile !== null && $newCount > 0) {
+                      $changedLines[$currentFile] ??= [];
+
+                      for ($i = 0; $i < $newCount; $i++) {
+                          $changedLines[$currentFile][] =
+                              $newStart + $i;
+                      }
+                  }
+
+                  continue;
+              }
+          }
+
+          $comments = [];
+
+          $addComment = static function (
+              array &$comments,
+              string $file,
+              int $line,
+              string $message,
+              string $severity,
+              string $category,
+              string $suggestion
+          ): void {
+              $file = ltrim($file, '/');
+
+              if ($file === '' || $line < 1 || $message === '') {
+                  return;
+              }
+
+              $body = '';
+
+              if ($severity !== '') {
+                  $body .= '**' . strtoupper($severity) . '**';
+              }
+
+              if ($category !== '') {
+                  if ($body !== '') {
+                      $body .= ' · ';
+                  }
+
+                  $body .= $category;
+              }
+
+              if ($body !== '') {
+                  $body .= "\n\n";
+              }
+
+              $body .= $message;
+
+              if ($suggestion !== '') {
+                  $body .= "\n\n**Suggestion:** " . $suggestion;
+              }
+
+              $comments[] = [
+                  'path' => $file,
+                  'line' => $line,
+                  'side' => 'RIGHT',
+                  'body' => $body,
+              ];
+          };
+
+          $walkFindings = static function (
+              mixed $value,
+              ?string $currentFile = null
+          ) use (
+              &$walkFindings,
+              &$comments,
+              $changedLines,
+              $addComment
+          ): void {
+              if (!is_array($value)) {
+                  return;
+              }
+
+              if (array_is_list($value)) {
+                  foreach ($value as $item) {
+                      $walkFindings($item, $currentFile);
+                  }
+
+                  return;
+              }
+
+              $file = $currentFile;
+
+              foreach ([
+                  'file',
+                  'file_path',
+                  'path',
+                  'filePath',
+              ] as $key) {
+                  if (
+                      isset($value[$key]) &&
+                      is_string($value[$key]) &&
+                      $value[$key] !== ''
+                  ) {
+                      $file = $value[$key];
+                      break;
+                  }
+              }
+
+              $line = null;
+
+              foreach ([
+                  'line',
+                  'line_number',
+                  'lineNumber',
+              ] as $key) {
+                  if (
+                      isset($value[$key]) &&
+                      is_numeric($value[$key])
+                  ) {
+                      $line = (int) $value[$key];
+                      break;
+                  }
+              }
+
+              if (
+                  $file !== null &&
+                  $line !== null &&
+                  isset($value['message']) &&
+                  is_string($value['message'])
+              ) {
+                  $normalizedFile = ltrim($file, '/');
+
+                  if (
+                      isset($changedLines[$normalizedFile]) &&
+                      in_array(
+                          $line,
+                          $changedLines[$normalizedFile],
+                          true
+                      )
+                  ) {
+                      $addComment(
+                          $comments,
+                          $normalizedFile,
+                          $line,
+                          $value['message'],
+                          (string) ($value['severity'] ?? ''),
+                          (string) ($value['category'] ?? ''),
+                          (string) ($value['suggestion'] ?? '')
+                      );
+                  }
+              }
+
+              foreach ($value as $child) {
+                  if (is_array($child)) {
+                      $walkFindings($child, $file);
+                  }
+              }
+          };
+
+          /*
+           * Only inspect the findings section.
+           * Do not recursively inspect commit_sha/base_sha
+           * or other metadata.
+           */
+          if (
+              isset($data['findings']) &&
+              is_array($data['findings'])
+          ) {
+              $walkFindings($data['findings']);
+          }
+
+          $unique = [];
+
+          foreach ($comments as $comment) {
+              $key = implode('|', [
+                  $comment['path'],
+                  $comment['line'],
+                  $comment['body'],
+              ]);
+
+              $unique[$key] = $comment;
+          }
+
+          $comments = array_values($unique);
+
+          file_put_contents(
+              'review-comments.json',
+              json_encode(
+                  $comments,
+                  JSON_PRETTY_PRINT |
+                  JSON_UNESCAPED_SLASHES |
+                  JSON_THROW_ON_ERROR
+              ) . PHP_EOL
+          );
+
+          echo 'Prepared ' .
+              count($comments) .
+              " valid PR line review comment(s).\n";
+
+          if ($comments === []) {
+              echo "No findings can be attached to changed PR lines.\n";
+          }
+          PHP
+
+          if [ ! -s review-comments.json ]; then
+            echo "No line review comments to publish."
+            exit 0
+          fi
+
+          COMMENTS=$(cat review-comments.json)
+
+          jq \
+            --arg commit_id "$HEAD_SHA" \
+            --argjson comments "$COMMENTS" \
+            '{
+              commit_id: $commit_id,
+              event: "COMMENT",
+              body: "AI Code Review",
+              comments: $comments
+            }' \
+            > review-payload.json
+
+          gh api \
+            --method POST \
+            "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" \
+            --input review-payload.json
+
+          rm -f \
+            review-comments.json \
+            review-payload.json \
+            changed-lines.diff

@@ -2,21 +2,21 @@ name: AI Code Fix
 
 on:
   issue_comment:
-    types:
-      - created
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: write
 
 concurrency:
   group: ai-fix-pr-${{ github.event.issue.number }}
   cancel-in-progress: false
 
-permissions:
-  contents: write
-  pull-requests: read
-  issues: read
-  actions: write
-
 jobs:
   ai-fix:
+    name: ai-fix
     if: >
       github.event.issue.pull_request &&
       github.event.comment.user.login == github.event.issue.user.login &&
@@ -24,14 +24,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get pull request information
+      - name: Read current PR state
         id: pr
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.issue.number }}
           REPOSITORY: ${{ github.repository }}
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           gh pr view "$PR_NUMBER" \
             --repo "$REPOSITORY" \
@@ -49,186 +50,315 @@ jobs:
           echo "Head branch: $HEAD_REF"
           echo "Base SHA: $BASE_SHA"
 
-          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
-          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "head_sha=$HEAD_SHA"
+            echo "head_ref=$HEAD_REF"
+            echo "base_sha=$BASE_SHA"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Find successful AI Code Review run
-        id: review-run
+      - name: Detect Agent 2 commit
+        id: agent2
         env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          echo "Looking for AI Code Review for:"
-          echo "$HEAD_SHA"
+          COMMIT_MESSAGE=$(
+            gh api \
+              "repos/$REPOSITORY/commits/$HEAD_SHA" \
+              --jq '.commit.message'
+          )
 
-          RUN_ID=$(gh run list \
-            --repo "$REPOSITORY" \
-            --workflow=ai-code-review.yml \
-            --limit=100 \
-            --json databaseId,headSha,status,conclusion \
-            | jq -r --arg SHA "$HEAD_SHA" '
-              .[]
-              | select(.headSha == $SHA)
-              | select(.status == "completed")
-              | select(.conclusion == "success")
-              | .databaseId
-            ' \
-            | head -n 1)
+          echo "Current HEAD commit message:"
+          echo "$COMMIT_MESSAGE"
 
-          if [ -z "$RUN_ID" ]; then
-            echo "No successful AI Code Review run was found."
-            echo "Expected SHA: $HEAD_SHA"
-            exit 1
+          if [ "$COMMIT_MESSAGE" = "Apply AI code fixes" ]; then
+            echo "is_agent2_commit=true" >> "$GITHUB_OUTPUT"
+            echo "Current PR HEAD was created by Agent 2."
+            echo "This approval cannot trigger another AI fix."
+          else
+            echo "is_agent2_commit=false" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "Found AI Code Review run:"
-          echo "$RUN_ID"
-
-          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Inspect AI Code Review run
+      - name: Find exact successful AI Code Review
+        id: review
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ steps.review-run.outputs.run_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
           REPOSITORY: ${{ github.repository }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          echo "Repository:"
-          echo "$REPOSITORY"
+          echo "Looking for AI Code Review for:"
+          echo "HEAD: $HEAD_SHA"
+          echo "BASE: $BASE_SHA"
 
-          echo "AI Code Review run:"
-          echo "$RUN_ID"
+          RUN_ID=$(
+            gh run list \
+              --repo "$REPOSITORY" \
+              --workflow=ai-code-review.yml \
+              --limit=100 \
+              --json databaseId,headSha,status,conclusion \
+              | jq -r --arg SHA "$HEAD_SHA" '
+                  .[]
+                  | select(.headSha == $SHA)
+                  | select(.status == "completed")
+                  | select(.conclusion == "success")
+                  | .databaseId
+                ' \
+              | head -n 1
+          )
 
-          echo ""
-          echo "Run information:"
+          if [ -z "$RUN_ID" ]; then
+            echo "stale_approval=true" >> "$GITHUB_OUTPUT"
+            echo "No successful AI Code Review exists for the current PR HEAD."
+            echo "The approval is stale. No AI fix will be executed."
+            exit 0
+          fi
 
-          gh api \
-            "repos/${REPOSITORY}/actions/runs/${RUN_ID}" \
-            --jq '{
-              id: .id,
-              name: .name,
-              status: .status,
-              conclusion: .conclusion,
-              head_sha: .head_sha,
-              head_branch: .head_branch
-            }'
+          ARTIFACT_NAME="ai-review-${HEAD_SHA}"
 
-          echo ""
-          echo "Artifacts in this run:"
+          ARTIFACT_ID=$(
+            gh api \
+              --paginate \
+              "repos/$REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
+              --jq --arg NAME "$ARTIFACT_NAME" '
+                .artifacts[]
+                | select(.name == $NAME)
+                | select(.expired == false)
+                | .id
+              ' \
+              | head -n 1
+          )
 
-          gh api \
-            "repos/${REPOSITORY}/actions/runs/${RUN_ID}/artifacts" \
-            --jq '.artifacts[] | {
-              name: .name,
-              id: .id,
-              size_in_bytes: .size_in_bytes,
-              expired: .expired
-            }'
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "stale_approval=true" >> "$GITHUB_OUTPUT"
+            echo "The successful review run exists, but its exact artifact is missing or expired."
+            echo "The approval is stale. No AI fix will be executed."
+            exit 0
+          fi
 
-      - name: Checkout pull request
+          echo "Found AI Code Review run: $RUN_ID"
+          echo "Found valid review artifact: $ARTIFACT_NAME"
+
+          {
+            echo "stale_approval=false"
+            echo "run_id=$RUN_ID"
+            echo "artifact_id=$ARTIFACT_ID"
+            echo "artifact_name=$ARTIFACT_NAME"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Report stale approval
+        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > stale-approval.md <<EOF
+          ## 🤖 AI Code Fix
+
+          This approval is **stale**.
+
+          The current PR HEAD is:
+
+          \`$HEAD_SHA\`
+
+          No AI fix was executed.
+
+          Please wait for the AI Code Review for the current commit, then comment:
+
+          \`@ai-fix approve\`
+          EOF
+
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file stale-approval.md
+
+      - name: Report Agent 2 commit
+        if: steps.agent2.outputs.is_agent2_commit == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > agent2-commit.md <<EOF
+          ## 🤖 AI Code Fix
+
+          This PR is already at an **Agent 2 fix commit**.
+
+          No additional AI fix was executed.
+          EOF
+
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file agent2-commit.md
+
+      - name: Checkout exact PR HEAD
+        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.pr.outputs.head_sha }}
           fetch-depth: 0
 
-      - name: Download AI review artifact
-        uses: actions/download-artifact@v5
-        with:
-          name: ai-review-${{ steps.pr.outputs.head_sha }}
-          path: ai-review
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          run-id: ${{ steps.review-run.outputs.run_id }}
-
-      - name: Verify downloaded review result
-        env:
-          EXPECTED_SHA: ${{ steps.pr.outputs.head_sha }}
-        run: |
-          set -e
-
-          echo "Downloaded artifact contents:"
-          find ai-review -type f -print
-
-          REVIEW_FILE="ai-review/review-result.json"
-
-          if [ ! -f "$REVIEW_FILE" ]; then
-            echo "Review result file was not found:"
-            echo "$REVIEW_FILE"
-            exit 1
-          fi
-
-          echo "Review result found:"
-          echo "$REVIEW_FILE"
-
-          REVIEW_SHA=$(php -r '
-            $data = json_decode(
-                file_get_contents($argv[1]),
-                true,
-                512,
-                JSON_THROW_ON_ERROR
-            );
-
-            echo $data["commit_sha"] ?? "";
-          ' "$REVIEW_FILE")
-
-          echo "Expected SHA:"
-          echo "$EXPECTED_SHA"
-
-          echo "Review SHA:"
-          echo "$REVIEW_SHA"
-
-          if [ "$REVIEW_SHA" != "$EXPECTED_SHA" ]; then
-            echo "Review result does not belong to the current PR commit."
-            exit 1
-          fi
-
-          echo "Review result belongs to the current PR commit."
-
-      - name: Set up PHP
+      - name: Setup PHP
+        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
           extensions: mbstring, intl
           coverage: none
+          ini-file: production
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --no-progress
+        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+        run: composer install --no-interaction --no-progress --prefer-dist
 
-      - name: Run AI fix
+      - name: Download exact review artifact
+        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ steps.review.outputs.artifact_name }}
+          path: ai-review
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.review.outputs.run_id }}
+
+      - name: Validate persisted review
+        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+        id: validate-review
+        env:
+          EXPECTED_SHA: ${{ steps.pr.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REVIEW_FILE="ai-review/review-result.json"
+
+          if [ ! -f "$REVIEW_FILE" ]; then
+            echo "Review artifact is invalid: review-result.json is missing."
+            exit 1
+          fi
+
+          if [ ! -s "$REVIEW_FILE" ]; then
+            echo "Review artifact is invalid: review-result.json is empty."
+            exit 1
+          fi
+
+          php -r '
+          $data = json_decode(
+              file_get_contents($argv[1]),
+              true,
+              512,
+              JSON_THROW_ON_ERROR
+          );
+
+          foreach (["commit_sha", "base_sha"] as $field) {
+              if (
+                  !isset($data[$field]) ||
+                  !is_string($data[$field]) ||
+                  $data[$field] === ""
+              ) {
+                  fwrite(
+                      STDERR,
+                      "Missing or invalid {$field}.\n"
+                  );
+                  exit(1);
+              }
+          }
+
+          if (
+              isset($data["findings"]) &&
+              !is_array($data["findings"])
+          ) {
+              fwrite(
+                  STDERR,
+                  "Invalid findings structure.\n"
+              );
+              exit(1);
+          }
+          ' "$REVIEW_FILE"
+
+          REVIEW_SHA=$(jq -r '.commit_sha' "$REVIEW_FILE")
+          REVIEW_BASE_SHA=$(jq -r '.base_sha' "$REVIEW_FILE")
+
+          echo "Expected SHA:      $EXPECTED_SHA"
+          echo "Review SHA:        $REVIEW_SHA"
+          echo "Expected base SHA: $EXPECTED_BASE_SHA"
+          echo "Review base SHA:   $REVIEW_BASE_SHA"
+
+          if [ "$REVIEW_SHA" != "$EXPECTED_SHA" ]; then
+            echo "Review result does not belong to the current PR HEAD."
+            exit 1
+          fi
+
+          if [ "$REVIEW_BASE_SHA" != "$EXPECTED_BASE_SHA" ]; then
+            echo "Review result does not belong to the current PR BASE."
+            exit 1
+          fi
+
+          echo "Review result is valid and bound to the current HEAD and BASE."
+
+      - name: Run Agent 2
+        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          GEMINI_RETRY_DELAY: ${{ vars.GEMINI_RETRY_DELAY }}
+          GEMINI_RETRY_DELAY: 1
+        shell: bash
         run: |
+          set -euo pipefail
+
+          BASE_SHA="${{ steps.pr.outputs.base_sha }}"
+          HEAD_SHA="${{ steps.pr.outputs.head_sha }}"
+
+          echo "Using persisted AI review from:"
+          echo "ai-review/review-result.json"
+
           php bin/console ai:fix \
-            "${{ steps.pr.outputs.base_sha }}" \
-            "${{ steps.pr.outputs.head_sha }}" \
+            "$BASE_SHA" \
+            "$HEAD_SHA" \
             --approved \
             --review-file="ai-review/review-result.json"
-      - name: Remove AI review artifact from working tree
-        run: |
-          rm -rf ai-review
+
+      - name: Remove review artifact
+        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+        run: rm -rf ai-review
 
       - name: Commit and push fixes
+        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+        env:
+          HEAD_REF: ${{ steps.pr.outputs.head_ref }}
+        shell: bash
         run: |
-          set -e
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          set -euo pipefail
 
           if git diff --quiet; then
             echo "No changes were made."
             exit 0
           fi
 
-          git add -A
+          git config user.name "AI Code Fix"
+          git config user.email "ai-code-fix@users.noreply.github.com"
 
+          git add -A
           git commit -m "Apply AI code fixes"
 
           git push origin \
-            HEAD:${{ steps.pr.outputs.head_ref }}
+            "HEAD:${HEAD_REF}"
