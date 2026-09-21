@@ -188,14 +188,99 @@ jobs:
           set -euo pipefail
 
           git diff \
-            --unified=0 \
             --no-color \
+            --unified=0 \
             "$BASE_SHA" \
             "$HEAD_SHA" \
             -- '*.php' \
             > changed-lines.diff
 
-          echo "Changed PHP diff prepared."
+          echo "Changed PHP diff:"
+          cat changed-lines.diff
+
+          php <<'PHP'
+          <?php
+
+          declare(strict_types=1);
+
+          $diff = file_get_contents('changed-lines.diff');
+
+          $changedLines = [];
+          $currentFile = null;
+          $currentLine = null;
+          $currentCount = 0;
+
+          foreach (preg_split('/\R/', $diff) as $line) {
+              if (str_starts_with($line, '+++ b/')) {
+                  $currentFile = substr($line, 6);
+                  $currentLine = null;
+                  $currentCount = 0;
+
+                  echo "File: {$currentFile}\n";
+
+                  continue;
+              }
+
+              if (
+                  preg_match(
+                      '/^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?/ ',
+                      $line,
+                      $matches
+                  )
+              ) {
+                  $currentLine = (int) $matches[1];
+                  $currentCount = isset($matches[2])
+                      ? (int) $matches[2]
+                      : 1;
+
+                  echo sprintf(
+                      "Hunk: %s line=%d count=%d\n",
+                      $currentFile ?? 'unknown',
+                      $currentLine,
+                      $currentCount
+                  );
+
+                  if (
+                      $currentFile !== null &&
+                      $currentCount > 0
+                  ) {
+                      $changedLines[$currentFile] ??= [];
+
+                      for ($i = 0; $i < $currentCount; $i++) {
+                          $changedLines[$currentFile][] =
+                              $currentLine + $i;
+                      }
+                  }
+
+                  continue;
+              }
+          }
+
+          foreach ($changedLines as $file => $lines) {
+              $lines = array_values(array_unique($lines));
+              sort($lines);
+
+              $changedLines[$file] = $lines;
+
+              echo sprintf(
+                  "Changed lines: %s => %s\n",
+                  $file,
+                  implode(', ', $lines)
+              );
+          }
+
+          file_put_contents(
+              'changed-lines.json',
+              json_encode(
+                  $changedLines,
+                  JSON_PRETTY_PRINT |
+                  JSON_UNESCAPED_SLASHES |
+                  JSON_THROW_ON_ERROR
+              ) . PHP_EOL
+          );
+
+          echo "Changed-line map prepared.\n";
+          PHP
 
       - name: Post line review comments
         if: steps.agent2.outputs.is_agent2_commit != 'true'
@@ -214,7 +299,7 @@ jobs:
           declare(strict_types=1);
 
           $reviewFile = 'review-result.json';
-          $diffFile = 'changed-lines.diff';
+          $changedLinesFile = 'changed-lines.json';
 
           $data = json_decode(
               file_get_contents($reviewFile),
@@ -223,51 +308,15 @@ jobs:
               JSON_THROW_ON_ERROR
           );
 
-          $diff = file_get_contents($diffFile);
+          $changedLines = json_decode(
+              file_get_contents($changedLinesFile),
+              true,
+              512,
+              JSON_THROW_ON_ERROR
+          );
 
-          /*
-           * Build a map containing only lines that were added
-           * to the PR:
-           *
-           * [
-           *     'src/Example.php' => [4, 5, 6],
-           * ]
-           */
-          $changedLines = [];
-          $currentFile = null;
-
-          foreach (preg_split('/\R/', $diff) as $line) {
-              if (preg_match(
-                  '/^\+\+\+ b\/(.+)$/',
-                  $line,
-                  $matches
-              )) {
-                  $currentFile = $matches[1];
-                  continue;
-              }
-
-              if (preg_match(
-                  '/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/',
-                  $line,
-                  $matches
-              )) {
-                  $newStart = (int) $matches[1];
-                  $newCount = isset($matches[2])
-                      ? (int) $matches[2]
-                      : 1;
-
-                  if ($currentFile !== null && $newCount > 0) {
-                      $changedLines[$currentFile] ??= [];
-
-                      for ($i = 0; $i < $newCount; $i++) {
-                          $changedLines[$currentFile][] =
-                              $newStart + $i;
-                      }
-                  }
-
-                  continue;
-              }
-          }
+          echo "Changed-line map:\n";
+          print_r($changedLines);
 
           $comments = [];
 
@@ -282,7 +331,11 @@ jobs:
           ): void {
               $file = ltrim($file, '/');
 
-              if ($file === '' || $line < 1 || $message === '') {
+              if (
+                  $file === '' ||
+                  $line < 1 ||
+                  $message === ''
+              ) {
                   return;
               }
 
@@ -318,28 +371,26 @@ jobs:
               ];
           };
 
-          $walkFindings = static function (
-              mixed $value,
-              ?string $currentFile = null
-          ) use (
-              &$walkFindings,
-              &$comments,
-              $changedLines,
-              $addComment
-          ): void {
-              if (!is_array($value)) {
-                  return;
+          if (
+              !isset($data['findings']) ||
+              !is_array($data['findings'])
+          ) {
+              echo "No findings section found.\n";
+
+              file_put_contents(
+                  'review-comments.json',
+                  "[]\n"
+              );
+
+              exit(0);
+          }
+
+          foreach ($data['findings'] as $finding) {
+              if (!is_array($finding)) {
+                  continue;
               }
 
-              if (array_is_list($value)) {
-                  foreach ($value as $item) {
-                      $walkFindings($item, $currentFile);
-                  }
-
-                  return;
-              }
-
-              $file = $currentFile;
+              $file = null;
 
               foreach ([
                   'file',
@@ -348,11 +399,11 @@ jobs:
                   'filePath',
               ] as $key) {
                   if (
-                      isset($value[$key]) &&
-                      is_string($value[$key]) &&
-                      $value[$key] !== ''
+                      isset($finding[$key]) &&
+                      is_string($finding[$key]) &&
+                      $finding[$key] !== ''
                   ) {
-                      $file = $value[$key];
+                      $file = ltrim($finding[$key], '/');
                       break;
                   }
               }
@@ -365,59 +416,86 @@ jobs:
                   'lineNumber',
               ] as $key) {
                   if (
-                      isset($value[$key]) &&
-                      is_numeric($value[$key])
+                      isset($finding[$key]) &&
+                      is_numeric($finding[$key])
                   ) {
-                      $line = (int) $value[$key];
+                      $line = (int) $finding[$key];
                       break;
                   }
               }
 
-              if (
-                  $file !== null &&
-                  $line !== null &&
-                  isset($value['message']) &&
-                  is_string($value['message'])
-              ) {
-                  $normalizedFile = ltrim($file, '/');
+              $message = '';
 
+              foreach ([
+                  'message',
+                  'description',
+              ] as $key) {
                   if (
-                      isset($changedLines[$normalizedFile]) &&
-                      in_array(
-                          $line,
-                          $changedLines[$normalizedFile],
-                          true
-                      )
+                      isset($finding[$key]) &&
+                      is_string($finding[$key]) &&
+                      $finding[$key] !== ''
                   ) {
-                      $addComment(
-                          $comments,
-                          $normalizedFile,
-                          $line,
-                          $value['message'],
-                          (string) ($value['severity'] ?? ''),
-                          (string) ($value['category'] ?? ''),
-                          (string) ($value['suggestion'] ?? '')
-                      );
+                      $message = $finding[$key];
+                      break;
                   }
               }
 
-              foreach ($value as $child) {
-                  if (is_array($child)) {
-                      $walkFindings($child, $file);
-                  }
-              }
-          };
+              $severity = isset($finding['severity'])
+                  ? (string) $finding['severity']
+                  : '';
 
-          /*
-           * Only inspect the findings section.
-           * Do not recursively inspect commit_sha/base_sha
-           * or other metadata.
-           */
-          if (
-              isset($data['findings']) &&
-              is_array($data['findings'])
-          ) {
-              $walkFindings($data['findings']);
+              $category = isset($finding['category'])
+                  ? (string) $finding['category']
+                  : '';
+
+              $suggestion = isset($finding['suggestion'])
+                  ? (string) $finding['suggestion']
+                  : '';
+
+              echo "Finding:\n";
+              echo "  file: " . ($file ?? 'NULL') . "\n";
+              echo "  line: " . ($line ?? 'NULL') . "\n";
+              echo "  message: {$message}\n";
+
+              if (
+                  $file === null ||
+                  $line === null ||
+                  $message === ''
+              ) {
+                  echo "  SKIPPED: incomplete finding.\n";
+                  continue;
+              }
+
+              $availableLines = $changedLines[$file] ?? [];
+
+              echo "  changed lines: " .
+                  ($availableLines === []
+                      ? 'NONE'
+                      : implode(', ', $availableLines)) .
+                  "\n";
+
+              if (
+                  !in_array(
+                      $line,
+                      $availableLines,
+                      true
+                  )
+              ) {
+                  echo "  SKIPPED: line is not a changed PR line.\n";
+                  continue;
+              }
+
+              echo "  MATCHED: preparing GitHub PR line comment.\n";
+
+              $addComment(
+                  $comments,
+                  $file,
+                  $line,
+                  $message,
+                  $severity,
+                  $category,
+                  $suggestion
+              );
           }
 
           $unique = [];
@@ -444,25 +522,24 @@ jobs:
               ) . PHP_EOL
           );
 
-          echo 'Prepared ' .
+          echo "\nPrepared " .
               count($comments) .
               " valid PR line review comment(s).\n";
 
-          if ($comments === []) {
-              echo "No findings can be attached to changed PR lines.\n";
-          }
           PHP
 
-          if [ ! -s review-comments.json ]; then
-            echo "No line review comments to publish."
+          COMMENT_COUNT=$(jq 'length' review-comments.json)
+
+          echo "Comment count: $COMMENT_COUNT"
+
+          if [ "$COMMENT_COUNT" -eq 0 ]; then
+            echo "No findings can be attached to changed PR lines."
             exit 0
           fi
 
-          COMMENTS=$(cat review-comments.json)
-
           jq \
             --arg commit_id "$HEAD_SHA" \
-            --argjson comments "$COMMENTS" \
+            --argjson comments "$(cat review-comments.json)" \
             '{
               commit_id: $commit_id,
               event: "COMMENT",
@@ -471,12 +548,10 @@ jobs:
             }' \
             > review-payload.json
 
+          echo "GitHub review payload:"
+          cat review-payload.json
+
           gh api \
             --method POST \
             "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" \
             --input review-payload.json
-
-          rm -f \
-            review-comments.json \
-            review-payload.json \
-            changed-lines.diff
