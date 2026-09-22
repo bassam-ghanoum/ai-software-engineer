@@ -2,7 +2,7 @@
 
 function test(): string
 {
-    return [] . "Hello, World!"; xx
+    return []. "Hello, World!";
     
 
     echo "This line is unreachable.";
