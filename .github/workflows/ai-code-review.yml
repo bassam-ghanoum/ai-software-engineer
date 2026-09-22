@@ -20,7 +20,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect Agent 2 commit
+      - name: Detect Fix-agent commit
         id: agent2
         shell: bash
         run: |
@@ -33,7 +33,7 @@ jobs:
 
           if [ "$COMMIT_MESSAGE" = "Apply AI code fixes" ]; then
             echo "is_agent2_commit=true" >> "$GITHUB_OUTPUT"
-            echo "This commit was created by Agent 2. Skipping AI Code Review."
+            echo "This commit was created by Fix-agent. Skipping AI Code Review."
           else
             echo "is_agent2_commit=false" >> "$GITHUB_OUTPUT"
             echo "This commit was created by the developer. AI Code Review will run."

@@ -56,7 +56,7 @@ jobs:
             echo "base_sha=$BASE_SHA"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Detect Agent 2 commit
+      - name: Detect Fix-Agent commit
         id: agent2
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -77,7 +77,7 @@ jobs:
 
           if [ "$COMMIT_MESSAGE" = "Apply AI code fixes" ]; then
             echo "is_agent2_commit=true" >> "$GITHUB_OUTPUT"
-            echo "Current PR HEAD was created by Agent 2."
+            echo "Current PR HEAD was created by Fix-Agent."
             echo "This approval cannot trigger another AI fix."
           else
             echo "is_agent2_commit=false" >> "$GITHUB_OUTPUT"
@@ -163,7 +163,7 @@ jobs:
             --repo "$REPOSITORY" \
             --body-file stale-approval.md
 
-      - name: Report Agent 2 commit
+      - name: Report Fix-Agent commit
         if: steps.agent2.outputs.is_agent2_commit == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -176,7 +176,7 @@ jobs:
           cat > agent2-commit.md <<EOF
           ## 🤖 AI Code Fix
 
-          This PR is already at an **Agent 2 fix commit**.
+          This PR is already at an **Fix-Agent fix commit**.
 
           No additional AI fix was executed.
           EOF
@@ -206,15 +206,58 @@ jobs:
         if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
         run: composer install --no-interaction --no-progress --prefer-dist
 
-      - name: Download exact review artifact
+      - name: Download AI review artifact
         if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
-        uses: actions/download-artifact@v5
-        with:
-          name: ${{ steps.review.outputs.artifact_name }}
-          path: ai-review
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: ${{ steps.review.outputs.run_id }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          REVIEW_RUN_ID: ${{ steps.review.outputs.review_run_id }}
+          ARTIFACT_NAME: ai-review-${{ steps.pr.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Downloading AI review artifact..."
+          echo "Review run ID: $REVIEW_RUN_ID"
+          echo "Artifact: $ARTIFACT_NAME"
+
+          if ! [[ "$REVIEW_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid review run ID: $REVIEW_RUN_ID"
+            exit 1
+          fi
+
+          mkdir -p ai-review
+
+          ARTIFACT_ID=$(
+            gh api \
+              --paginate \
+              "repos/$REPOSITORY/actions/runs/$REVIEW_RUN_ID/artifacts" \
+              --jq --arg NAME "$ARTIFACT_NAME" '
+                .artifacts[]
+                | select(.name == $NAME)
+                | select(.expired == false)
+                | .id
+              ' \
+            | head -n 1
+          )
+
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "::error::Artifact '$ARTIFACT_NAME' was not found in review run $REVIEW_RUN_ID."
+            exit 1
+          fi
+
+          echo "Artifact ID: $ARTIFACT_ID"
+
+          gh api \
+            "repos/$REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > ai-review/artifact.zip
+
+          unzip -o ai-review/artifact.zip -d ai-review
+
+          rm ai-review/artifact.zip
+
+          echo "Downloaded AI review artifact:"
+          find ai-review -maxdepth 2 -type f -print
 
       - name: Validate persisted review
         if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
@@ -292,7 +335,7 @@ jobs:
 
           echo "Review result is valid and bound to the current HEAD and BASE."
 
-      - name: Run Agent 2
+      - name: Run Fix-Agent
         if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
