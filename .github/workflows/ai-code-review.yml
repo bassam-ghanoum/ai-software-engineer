@@ -295,7 +295,7 @@ jobs:
           echo "Changed-line map prepared.\n";
           PHP
 
-      - name: Post line review comments
+      - name: Post AI review comments
         if: steps.agent2.outputs.is_agent2_commit != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -306,236 +306,177 @@ jobs:
         run: |
           set -euo pipefail
 
-          php <<'PHP'
-          <?php
+          echo "Preparing AI review comments..."
 
-          declare(strict_types=1);
+          php -r '
+          $data = json_decode(file_get_contents("review-result.json"), true, 512, JSON_THROW_ON_ERROR);
 
-          $reviewFile = 'review-result.json';
-          $changedLinesFile = 'changed-lines.json';
+          $diff = file_get_contents("changed-lines.diff");
 
-          $data = json_decode(
-              file_get_contents($reviewFile),
-              true,
-              512,
-              JSON_THROW_ON_ERROR
-          );
+          $changedLines = [];
+          $currentFile = null;
 
-          $changedLines = json_decode(
-              file_get_contents($changedLinesFile),
-              true,
-              512,
-              JSON_THROW_ON_ERROR
-          );
+          $lines = preg_split("/\\r?\\n/", $diff);
 
-          $comments = [];
+          foreach ($lines as $diffLine) {
+              if (preg_match("/^\\+\\+\\+ b\\/(.+)$/", $diffLine, $matches)) {
+                  $currentFile = $matches[1];
+                  $changedLines[$currentFile] ??= [];
+                  continue;
+              }
 
-          if (
-              !isset($data['reviews']) ||
-              !is_array($data['reviews'])
-          ) {
-              echo "No reviews section found.\n";
+              if ($currentFile === null) {
+                  continue;
+              }
 
-              file_put_contents(
-                  'review-comments.json',
-                  "[]\n"
-              );
+              if (preg_match("/^@@ .* \\+(\\d+)(?:,(\\d+))? @@/", $diffLine, $matches)) {
+                  $start = (int) $matches[1];
+                  $count = isset($matches[2]) ? (int) $matches[2] : 1;
 
-              exit(0);
+                  for ($line = $start; $line < $start + $count; $line++) {
+                      $changedLines[$currentFile][$line] = true;
+                  }
+              }
           }
 
-          foreach ($data['reviews'] as $file => $review) {
+          $inlineComments = [];
+          $generalFindings = [];
+
+          foreach ($data["reviews"] ?? [] as $file => $review) {
               if (!is_array($review)) {
                   continue;
               }
 
-              if (
-                  !isset($review['findings']) ||
-                  !is_array($review['findings'])
-              ) {
-                  echo "No findings for {$file}.\n";
+              if (!isset($review["findings"]) || !is_array($review["findings"])) {
                   continue;
               }
 
-              $file = ltrim((string) $file, '/');
+              $file = ltrim((string) $file, "/");
 
-              echo "Processing file: {$file}\n";
+              foreach ($review["findings"] as $finding) {
+                  $line = (int) ($finding["line"] ?? 0);
 
-              $availableLines = $changedLines[$file] ?? [];
-
-              echo "Changed lines: " .
-                  ($availableLines === []
-                      ? 'NONE'
-                      : implode(', ', $availableLines)) .
-                  "\n";
-
-              foreach ($review['findings'] as $finding) {
-                  if (!is_array($finding)) {
+                  if ($line <= 0) {
                       continue;
                   }
 
-                  if (
-                      !isset($finding['line']) ||
-                      !is_numeric($finding['line'])
-                  ) {
-                      echo "Skipping finding without a valid line.\n";
-                      continue;
-                  }
+                  $severity = strtoupper((string) ($finding["severity"] ?? "unknown"));
+                  $category = (string) ($finding["category"] ?? "unknown");
+                  $message = trim((string) ($finding["message"] ?? ""));
+                  $suggestion = trim((string) ($finding["suggestion"] ?? ""));
 
-                  $line = (int) $finding['line'];
-
-                  $message = isset($finding['message'])
-                      ? (string) $finding['message']
-                      : '';
-
-                  $severity = isset($finding['severity'])
-                      ? (string) $finding['severity']
-                      : '';
-
-                  $category = isset($finding['category'])
-                      ? (string) $finding['category']
-                      : '';
-
-                  $suggestion = isset($finding['suggestion'])
-                      ? (string) $finding['suggestion']
-                      : '';
-
-                  echo "Finding: {$file}:{$line}\n";
-
-                  if ($message === '') {
-                      echo "  SKIPPED: finding has no message.\n";
-                      continue;
-                  }
-
-                  if (
-                      !in_array(
-                          $line,
-                          $availableLines,
-                          true
-                      )
-                  ) {
-                      echo "  SKIPPED: line {$line} is not a changed PR line.\n";
-                      continue;
-                  }
-
-                  $body = '';
-
-                  if ($severity !== '') {
-                      $body .= '**' . strtoupper($severity) . '**';
-                  }
-
-                  if ($category !== '') {
-                      if ($body !== '') {
-                          $body .= ' · ';
-                      }
-
-                      $body .= $category;
-                  }
-
-                  if ($body !== '') {
-                      $body .= "\n\n";
-                  }
-
+                  $body = "### 🤖 AI Code Review\n\n";
+                  $body .= "**{$severity}** · `{$category}`\n\n";
                   $body .= $message;
 
-                  if ($suggestion !== '') {
-                      $body .= "\n\n**Suggestion:** " . $suggestion;
+                  if ($suggestion !== "") {
+                      $body .= "\n\n**Suggestion:** {$suggestion}";
                   }
 
-                  $comments[] = [
-                      'path' => $file,
-                      'line' => $line,
-                      'side' => 'RIGHT',
-                      'body' => $body,
-                  ];
-
-                  echo "  MATCHED: PR line comment prepared.\n";
+                  if (isset($changedLines[$file][$line])) {
+                      $inlineComments[] = [
+                          "path" => $file,
+                          "line" => $line,
+                          "side" => "RIGHT",
+                          "body" => $body,
+                      ];
+                  } else {
+                      $generalFindings[] = [
+                          "file" => $file,
+                          "line" => $line,
+                          "severity" => $severity,
+                          "category" => $category,
+                          "message" => $message,
+                          "suggestion" => $suggestion,
+                      ];
+                  }
               }
           }
 
-          $unique = [];
-
-          foreach ($comments as $comment) {
-              $key = implode('|', [
-                  $comment['path'],
-                  $comment['line'],
-                  $comment['body'],
-              ]);
-
-              $unique[$key] = $comment;
-          }
-
-          $comments = array_values($unique);
-
           file_put_contents(
-              'review-comments.json',
+              "review-inline-comments.json",
               json_encode(
-                  $comments,
-                  JSON_PRETTY_PRINT |
-                  JSON_UNESCAPED_SLASHES |
-                  JSON_THROW_ON_ERROR
-              ) . PHP_EOL
+                  $inlineComments,
+                  JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+              )
           );
 
-          echo "\nPrepared " .
-              count($comments) .
-              " valid PR line review comment(s).\n";
-          PHP
+          if ($generalFindings === []) {
+              file_put_contents("review-general-comment.md", "");
+          } else {
+              $body = "<!-- ai-code-review:" . getenv("HEAD_SHA") . " -->\n";
+              $body .= "## 🤖 AI Code Review\n\n";
+              $body .= "The following findings are in changed PHP files, but their reported lines are not part of the changed lines in this PR. They are therefore shown here instead of as inline comments.\n\n";
 
-          COMMENT_COUNT=$(jq 'length' review-comments.json)
+              foreach ($generalFindings as $finding) {
+                  $body .= "### `{$finding["file"]}:{$finding["line"]}`\n\n";
+                  $body .= "**{$finding["severity"]}** · `{$finding["category"]}`\n\n";
+                  $body .= $finding["message"];
 
-          echo "Comment count: $COMMENT_COUNT"
+                  if ($finding["suggestion"] !== "") {
+                      $body .= "\n\n**Suggestion:** {$finding["suggestion"]}";
+                  }
 
-          if [ "$COMMENT_COUNT" -eq 0 ]; then
-            echo "No findings can be attached to changed PR lines."
-            exit 0
+                  $body .= "\n\n---\n\n";
+              }
+
+              file_put_contents("review-general-comment.md", $body);
+          }
+
+          echo "Changed lines:\n";
+
+          if ($changedLines === []) {
+              echo "  NONE\n";
+          } else {
+              foreach ($changedLines as $file => $lines) {
+                  $lineNumbers = array_keys($lines);
+                  sort($lineNumbers, SORT_NUMERIC);
+
+                  echo "  {$file}: " . implode(", ", $lineNumbers) . "\n";
+              }
+          }
+
+          echo "Prepared " . count($inlineComments) . " inline comment(s).\n";
+          echo "Prepared " . count($generalFindings) . " general finding(s).\n";
+          '
+
+          INLINE_COUNT=$(jq 'length' review-inline-comments.json)
+
+          echo "Inline comment count: $INLINE_COUNT"
+
+          if [ "$INLINE_COUNT" -gt 0 ]; then
+            echo "Posting inline PR comments..."
+
+            while IFS= read -r comment; do
+              BODY=$(echo "$comment" | jq -r '.body')
+              PATH_VALUE=$(echo "$comment" | jq -r '.path')
+              LINE=$(echo "$comment" | jq -r '.line')
+              SIDE=$(echo "$comment" | jq -r '.side')
+
+              echo "Posting inline comment: ${PATH_VALUE}:${LINE}"
+
+              gh api \
+                --method POST \
+                "repos/$REPOSITORY/pulls/$PR_NUMBER/comments" \
+                -f body="$BODY" \
+                -f commit_id="$HEAD_SHA" \
+                -f path="$PATH_VALUE" \
+                -F line="$LINE" \
+                -f side="$SIDE"
+            done < <(jq -c '.[]' review-inline-comments.json)
+          else
+            echo "No inline comments to post."
           fi
 
-          jq \
-            --arg commit_id "$HEAD_SHA" \
-            --argjson comments "$(cat review-comments.json)" \
-            '{
-              commit_id: $commit_id,
-              event: "COMMENT",
-              body: "AI Code Review",
-              comments: $comments
-            }' \
-            > review-payload.json
+          if [ -s review-general-comment.md ]; then
+            echo "Posting general PR comment..."
 
-          echo "GitHub review payload:"
-          cat review-payload.json
+            gh api \
+              --method POST \
+              "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
+              -f body="$(cat review-general-comment.md)"
 
-          gh api \
-            --method POST \
-            "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" \
-            --input review-payload.json
-
-          rm -f \
-            review-comments.json \
-            review-payload.json \
-            changed-lines.diff \
-            changed-lines.json
-
-
-      - name: Debug existing PR reviews
-        if: steps.agent2.outputs.is_agent2_commit != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "===== Existing PR reviews ====="
-
-          gh api \
-            --paginate \
-            "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" \
-            --jq '.[] | {
-              id: .id,
-              user: .user.login,
-              state: .state,
-              commit_id: .commit_id,
-              body: .body
-            }'
+            echo "General AI review comment posted."
+          else
+            echo "No general findings to post."
+          fi
