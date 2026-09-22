@@ -54,7 +54,6 @@ jobs:
 
             echo "This commit was created by Fix-Agent."
             echo "Skipping AI Code Review."
-
           else
             echo "is_agent2_commit=false" >> "$GITHUB_OUTPUT"
 
@@ -126,7 +125,7 @@ jobs:
               JSON_THROW_ON_ERROR
           );
 
-          $data["commit_sha"] = $data["commit_sha"] ?? getenv("HEAD_SHA");
+          $data["commit_sha"] = getenv("HEAD_SHA");
           $data["base_sha"] = getenv("BASE_SHA");
 
           file_put_contents(
@@ -146,6 +145,7 @@ jobs:
 
       - name: Validate review result
         if: steps.agent2.outputs.is_agent2_commit != 'true'
+        id: validate-review
         shell: bash
         run: |
           set -euo pipefail
@@ -220,11 +220,17 @@ jobs:
           REVIEW_SHA=$(jq -r '.commit_sha' "$REVIEW_FILE")
           REVIEW_BASE_SHA=$(jq -r '.base_sha' "$REVIEW_FILE")
 
+          FINDINGS_COUNT=$(
+            jq '[.reviews[]?.findings[]?] | length' "$REVIEW_FILE"
+          )
+
           echo "Expected commit SHA: $EXPECTED_SHA"
           echo "Review commit SHA:   $REVIEW_SHA"
           echo
           echo "Expected base SHA:   $EXPECTED_BASE_SHA"
           echo "Review base SHA:     $REVIEW_BASE_SHA"
+          echo
+          echo "Total findings:      $FINDINGS_COUNT"
 
           if [ "$REVIEW_SHA" != "$EXPECTED_SHA" ]; then
             echo "::error::Review result does not belong to the current PR commit."
@@ -236,8 +242,59 @@ jobs:
             exit 1
           fi
 
+          echo "findings_count=$FINDINGS_COUNT" >> "$GITHUB_OUTPUT"
+
           echo
           echo "Review result is correctly bound to the current PR HEAD and BASE."
+
+      # ================================================================
+      # No findings
+      #
+      # A finding-free review must never enter the approval/fix loop.
+      # ================================================================
+
+      - name: Report no findings
+        if: >
+          steps.agent2.outputs.is_agent2_commit != 'true' &&
+          steps.validate-review.outputs.findings_count == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MARKER="ai-code-review-no-findings:$HEAD_SHA"
+
+          EXISTING=$(
+            gh api \
+              --paginate \
+              "repos/$REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+              | jq -r \
+                --arg MARKER "$MARKER" \
+                '[.[] | select((.body // "") | contains($MARKER))] | length'
+          )
+
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "No-findings notification already exists for $HEAD_SHA."
+            exit 0
+          fi
+
+          cat > no-findings.md <<EOF
+          ## 🤖 AI Code Review
+
+          No findings were detected for this commit.
+
+          **No AI fix is required.**
+
+          <!-- $MARKER -->
+          EOF
+
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file no-findings.md
 
       # ================================================================
       # Upload exact review artifact
@@ -259,7 +316,9 @@ jobs:
       # ================================================================
 
       - name: Prepare changed lines
-        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        if: >
+          steps.agent2.outputs.is_agent2_commit != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -375,24 +434,12 @@ jobs:
 
       # ================================================================
       # Prepare findings and stable fingerprints
-      #
-      # Fingerprint:
-      #
-      #   file
-      #   category
-      #   message
-      #   suggestion
-      #
-      # It deliberately does NOT contain:
-      #
-      #   - commit SHA
-      #   - line number
-      #
-      # Therefore the same finding remains the same finding when code moves.
       # ================================================================
 
       - name: Prepare AI review findings
-        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        if: >
+          steps.agent2.outputs.is_agent2_commit != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         shell: bash
@@ -586,13 +633,12 @@ jobs:
 
       # ================================================================
       # Load existing AI comments
-      #
-      # We only inspect comments containing our fingerprint marker.
-      # Developer comments and old unmarked comments are untouched.
       # ================================================================
 
       - name: Load existing AI review comments
-        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        if: >
+          steps.agent2.outputs.is_agent2_commit != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -631,16 +677,13 @@ jobs:
           jq 'length' existing-general-comments.json
 
       # ================================================================
-      # Remove duplicate fingerprinted comments already on the PR
-      #
-      # We keep the first occurrence of every fingerprint.
-      #
-      # This only touches comments containing our explicit fingerprint
-      # marker. Developer comments and old unmarked AI comments are safe.
+      # Remove duplicate fingerprinted comments
       # ================================================================
 
       - name: Remove duplicate AI review comments
-        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        if: >
+          steps.agent2.outputs.is_agent2_commit != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -738,11 +781,13 @@ jobs:
           )
 
       # ================================================================
-      # Build current fingerprint list AFTER duplicate cleanup
+      # Build current fingerprint list
       # ================================================================
 
       - name: Build existing finding fingerprints
-        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        if: >
+          steps.agent2.outputs.is_agent2_commit != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
         shell: bash
         run: |
           set -euo pipefail
@@ -778,7 +823,9 @@ jobs:
       # ================================================================
 
       - name: Post new inline AI findings
-        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        if: >
+          steps.agent2.outputs.is_agent2_commit != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -839,15 +886,12 @@ jobs:
 
       # ================================================================
       # Post new general findings
-      #
-      # One finding = one general PR comment.
-      #
-      # This makes stable deduplication possible even when the finding
-      # cannot be attached to a changed line.
       # ================================================================
 
       - name: Post new general AI findings
-        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        if: >
+          steps.agent2.outputs.is_agent2_commit != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -915,4 +959,5 @@ jobs:
             existing-general-pages.json \
             existing-inline-comments.json \
             existing-general-comments.json \
-            existing-fingerprints.txt
+            existing-fingerprints.txt \
+            no-findings.md
