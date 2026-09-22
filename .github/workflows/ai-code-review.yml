@@ -15,29 +15,56 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ================================================================
+      # Checkout
+      # ================================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Detect Fix-agent commit
+      # ================================================================
+      # Detect Agent 2 commit
+      #
+      # Agent 2 creates:
+      #
+      #   Apply AI code fixes
+      #
+      # We must NOT run Agent 1 again for that commit.
+      # ================================================================
+
+      - name: Detect Fix-Agent commit
         id: agent2
         shell: bash
         run: |
           set -euo pipefail
 
-          COMMIT_MESSAGE=$(git log -1 --pretty=%B "${{ github.event.pull_request.head.sha }}")
+          COMMIT_MESSAGE=$(
+            git log -1 \
+              --pretty=%B \
+              "${{ github.event.pull_request.head.sha }}"
+          )
 
           echo "Latest commit:"
-          echo "${COMMIT_MESSAGE}"
+          echo "$COMMIT_MESSAGE"
 
           if [ "$COMMIT_MESSAGE" = "Apply AI code fixes" ]; then
             echo "is_agent2_commit=true" >> "$GITHUB_OUTPUT"
-            echo "This commit was created by Fix-agent. Skipping AI Code Review."
+
+            echo "This commit was created by Fix-Agent."
+            echo "Skipping AI Code Review."
+
           else
             echo "is_agent2_commit=false" >> "$GITHUB_OUTPUT"
-            echo "This commit was created by the developer. AI Code Review will run."
+
+            echo "This commit was created by the developer."
+            echo "AI Code Review will run."
           fi
+
+      # ================================================================
+      # PHP
+      # ================================================================
 
       - name: Setup PHP
         if: steps.agent2.outputs.is_agent2_commit != 'true'
@@ -49,9 +76,17 @@ jobs:
           ini-file: production
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # ================================================================
+      # Dependencies
+      # ================================================================
+
       - name: Install dependencies
         if: steps.agent2.outputs.is_agent2_commit != 'true'
         run: composer install --no-interaction --no-progress --prefer-dist
+
+      # ================================================================
+      # Run Agent 1
+      # ================================================================
 
       - name: Run AI Code Review
         if: steps.agent2.outputs.is_agent2_commit != 'true'
@@ -65,7 +100,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Reviewing PHP changes: $BASE_SHA → $HEAD_SHA"
+          echo "Reviewing PHP changes:"
+          echo "$BASE_SHA → $HEAD_SHA"
 
           php bin/console ai:review \
             "$BASE_SHA" \
@@ -75,6 +111,7 @@ jobs:
 
           test -f review-result.json
 
+          echo
           echo "Binding review-result.json to:"
           echo "commit_sha = $HEAD_SHA"
           echo "base_sha   = $BASE_SHA"
@@ -103,6 +140,10 @@ jobs:
           );
           '
 
+      # ================================================================
+      # Validate persisted review
+      # ================================================================
+
       - name: Validate review result
         if: steps.agent2.outputs.is_agent2_commit != 'true'
         shell: bash
@@ -113,7 +154,15 @@ jobs:
           EXPECTED_SHA="${{ github.event.pull_request.head.sha }}"
           EXPECTED_BASE_SHA="${{ github.event.pull_request.base.sha }}"
 
-          test -s "$REVIEW_FILE"
+          if [ ! -f "$REVIEW_FILE" ]; then
+            echo "::error::review-result.json is missing."
+            exit 1
+          fi
+
+          if [ ! -s "$REVIEW_FILE" ]; then
+            echo "::error::review-result.json is empty."
+            exit 1
+          fi
 
           php -r '
           $data = json_decode(
@@ -123,28 +172,47 @@ jobs:
               JSON_THROW_ON_ERROR
           );
 
-          foreach (["commit_sha", "base_sha"] as $field) {
-              if (
-                  !isset($data[$field]) ||
-                  !is_string($data[$field]) ||
-                  $data[$field] === ""
-              ) {
+          foreach (["commit_sha", "base_sha", "reviews"] as $field) {
+              if (!array_key_exists($field, $data)) {
                   fwrite(
                       STDERR,
-                      "Missing or invalid {$field} in review result.\n"
+                      "Missing {$field} in review result.\n"
                   );
+
                   exit(1);
               }
           }
 
           if (
-              isset($data["findings"]) &&
-              !is_array($data["findings"])
+              !is_string($data["commit_sha"]) ||
+              $data["commit_sha"] === ""
           ) {
               fwrite(
                   STDERR,
-                  "Invalid findings structure.\n"
+                  "Invalid commit_sha in review result.\n"
               );
+
+              exit(1);
+          }
+
+          if (
+              !is_string($data["base_sha"]) ||
+              $data["base_sha"] === ""
+          ) {
+              fwrite(
+                  STDERR,
+                  "Invalid base_sha in review result.\n"
+              );
+
+              exit(1);
+          }
+
+          if (!is_array($data["reviews"])) {
+              fwrite(
+                  STDERR,
+                  "Invalid reviews structure.\n"
+              );
+
               exit(1);
           }
           ' "$REVIEW_FILE"
@@ -154,33 +222,28 @@ jobs:
 
           echo "Expected commit SHA: $EXPECTED_SHA"
           echo "Review commit SHA:   $REVIEW_SHA"
+          echo
           echo "Expected base SHA:   $EXPECTED_BASE_SHA"
           echo "Review base SHA:     $REVIEW_BASE_SHA"
 
           if [ "$REVIEW_SHA" != "$EXPECTED_SHA" ]; then
-            echo "Review result does not belong to the current PR commit."
+            echo "::error::Review result does not belong to the current PR commit."
             exit 1
           fi
 
           if [ "$REVIEW_BASE_SHA" != "$EXPECTED_BASE_SHA" ]; then
-            echo "Review result belongs to a different PR base."
+            echo "::error::Review result belongs to a different PR base."
             exit 1
           fi
 
-          echo "Review result is bound to the current PR HEAD and BASE."
-
-      - name: Debug review result structure
-        if: steps.agent2.outputs.is_agent2_commit != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          echo "===== review-result.json ====="
-          cat review-result.json
-
           echo
-          echo "===== top-level JSON keys ====="
-          jq -r 'keys[]' review-result.json
+          echo "Review result is correctly bound to the current PR HEAD and BASE."
+
+      # ================================================================
+      # Upload exact review artifact
+      #
+      # Agent 2 later downloads this exact artifact for this exact SHA.
+      # ================================================================
 
       - name: Upload review artifact
         if: steps.agent2.outputs.is_agent2_commit != 'true'
@@ -190,6 +253,10 @@ jobs:
           path: review-result.json
           if-no-files-found: error
           retention-days: 7
+
+      # ================================================================
+      # Calculate changed PHP lines
+      # ================================================================
 
       - name: Prepare changed lines
         if: steps.agent2.outputs.is_agent2_commit != 'true'
@@ -218,67 +285,78 @@ jobs:
 
           $diff = file_get_contents('changed-lines.diff');
 
+          if ($diff === false) {
+              throw new RuntimeException(
+                  'Unable to read changed-lines.diff.'
+              );
+          }
+
           $changedLines = [];
           $currentFile = null;
-          $currentLine = null;
-          $currentCount = 0;
 
           foreach (preg_split('/\R/', $diff) as $line) {
               if (str_starts_with($line, '+++ b/')) {
                   $currentFile = substr($line, 6);
-                  $currentLine = null;
-                  $currentCount = 0;
 
-                  echo "File: {$currentFile}\n";
+                  if ($currentFile === false) {
+                      $currentFile = null;
+                      continue;
+                  }
 
+                  $changedLines[$currentFile] ??= [];
+
+                  continue;
+              }
+
+              if ($currentFile === null) {
                   continue;
               }
 
               if (
                   preg_match(
-                      '/^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?/ ',
+                      '/^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,(\d+))?\s+@@/',
                       $line,
                       $matches
                   )
               ) {
-                  $currentLine = (int) $matches[1];
-                  $currentCount = isset($matches[2])
+                  $start = (int) $matches[1];
+
+                  $count = isset($matches[2])
                       ? (int) $matches[2]
                       : 1;
 
-                  echo sprintf(
-                      "Hunk: %s line=%d count=%d\n",
-                      $currentFile ?? 'unknown',
-                      $currentLine,
-                      $currentCount
-                  );
-
-                  if (
-                      $currentFile !== null &&
-                      $currentCount > 0
-                  ) {
-                      $changedLines[$currentFile] ??= [];
-
-                      for ($i = 0; $i < $currentCount; $i++) {
-                          $changedLines[$currentFile][] =
-                              $currentLine + $i;
-                      }
+                  if ($count <= 0) {
+                      continue;
                   }
 
-                  continue;
+                  for (
+                      $lineNumber = $start;
+                      $lineNumber < $start + $count;
+                      $lineNumber++
+                  ) {
+                      $changedLines[$currentFile][$lineNumber] = true;
+                  }
               }
           }
 
           foreach ($changedLines as $file => $lines) {
-              $lines = array_values(array_unique($lines));
-              sort($lines);
+              $lineNumbers = array_keys($lines);
 
-              $changedLines[$file] = $lines;
+              sort(
+                  $lineNumbers,
+                  SORT_NUMERIC
+              );
+
+              $changedLines[$file] = [];
+
+              foreach ($lineNumbers as $lineNumber) {
+                  $changedLines[$file][$lineNumber] = true;
+              }
 
               echo sprintf(
                   "Changed lines: %s => %s\n",
                   $file,
-                  implode(', ', $lines)
+                  implode(', ', $lineNumbers)
               );
           }
 
@@ -295,7 +373,411 @@ jobs:
           echo "Changed-line map prepared.\n";
           PHP
 
-      - name: Post AI review comments
+      # ================================================================
+      # Prepare findings and stable fingerprints
+      #
+      # Fingerprint:
+      #
+      #   file
+      #   category
+      #   message
+      #   suggestion
+      #
+      # It deliberately does NOT contain:
+      #
+      #   - commit SHA
+      #   - line number
+      #
+      # Therefore the same finding remains the same finding when code moves.
+      # ================================================================
+
+      - name: Prepare AI review findings
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          php <<'PHP'
+          <?php
+
+          declare(strict_types=1);
+
+          $reviewFile = 'review-result.json';
+          $changedLinesFile = 'changed-lines.json';
+
+          $data = json_decode(
+              file_get_contents($reviewFile),
+              true,
+              512,
+              JSON_THROW_ON_ERROR
+          );
+
+          $changedLines = json_decode(
+              file_get_contents($changedLinesFile),
+              true,
+              512,
+              JSON_THROW_ON_ERROR
+          );
+
+          $normalize = static function (string $value): string {
+              $value = strtolower(trim($value));
+
+              return preg_replace(
+                  '/\s+/',
+                  ' ',
+                  $value
+              ) ?? $value;
+          };
+
+          $fingerprint = static function (
+              string $file,
+              string $category,
+              string $message,
+              string $suggestion,
+          ) use ($normalize): string {
+              $payload = implode('|', [
+                  $normalize($file),
+                  $normalize($category),
+                  $normalize($message),
+                  $normalize($suggestion),
+              ]);
+
+              return hash('sha256', $payload);
+          };
+
+          $inlineFindings = [];
+          $generalFindings = [];
+
+          foreach ($data['reviews'] ?? [] as $file => $review) {
+              if (!is_array($review)) {
+                  continue;
+              }
+
+              if (
+                  !isset($review['findings']) ||
+                  !is_array($review['findings'])
+              ) {
+                  continue;
+              }
+
+              $file = ltrim((string) $file, '/');
+
+              foreach ($review['findings'] as $finding) {
+                  if (!is_array($finding)) {
+                      continue;
+                  }
+
+                  $line = (int) ($finding['line'] ?? 0);
+
+                  if ($line <= 0) {
+                      continue;
+                  }
+
+                  $severity = strtoupper(
+                      trim(
+                          (string) (
+                              $finding['severity'] ?? 'UNKNOWN'
+                          )
+                      )
+                  );
+
+                  $category = trim(
+                      (string) (
+                          $finding['category'] ?? 'unknown'
+                      )
+                  );
+
+                  $message = trim(
+                      (string) (
+                          $finding['message'] ?? ''
+                      )
+                  );
+
+                  $suggestion = trim(
+                      (string) (
+                          $finding['suggestion'] ?? ''
+                      )
+                  );
+
+                  if ($message === '') {
+                      continue;
+                  }
+
+                  $findingFingerprint = $fingerprint(
+                      $file,
+                      $category,
+                      $message,
+                      $suggestion,
+                  );
+
+                  $body =
+                      "### 🤖 AI Code Review\n\n";
+
+                  $body .=
+                      "<!-- ai-code-review-fingerprint:"
+                      . $findingFingerprint
+                      . " -->\n\n";
+
+                  $body .=
+                      "**{$severity}** · `{$category}`\n\n";
+
+                  $body .= $message;
+
+                  if ($suggestion !== '') {
+                      $body .=
+                          "\n\n**Suggestion:** "
+                          . $suggestion;
+                  }
+
+                  $item = [
+                      'fingerprint' => $findingFingerprint,
+                      'path' => $file,
+                      'line' => $line,
+                      'side' => 'RIGHT',
+                      'body' => $body,
+                  ];
+
+                  if (
+                      isset($changedLines[$file]) &&
+                      isset($changedLines[$file][(string) $line])
+                  ) {
+                      $inlineFindings[] = $item;
+                  } else {
+                      $generalFindings[] = $item;
+                  }
+              }
+          }
+
+          file_put_contents(
+              'review-inline-comments.json',
+              json_encode(
+                  $inlineFindings,
+                  JSON_PRETTY_PRINT |
+                  JSON_UNESCAPED_SLASHES |
+                  JSON_UNESCAPED_UNICODE |
+                  JSON_THROW_ON_ERROR
+              ) . PHP_EOL
+          );
+
+          file_put_contents(
+              'review-general-comments.json',
+              json_encode(
+                  $generalFindings,
+                  JSON_PRETTY_PRINT |
+                  JSON_UNESCAPED_SLASHES |
+                  JSON_UNESCAPED_UNICODE |
+                  JSON_THROW_ON_ERROR
+              ) . PHP_EOL
+          );
+
+          echo
+              'Prepared '
+              . count($inlineFindings)
+              . " inline finding(s).\n";
+
+          echo
+              'Prepared '
+              . count($generalFindings)
+              . " general finding(s).\n";
+
+          PHP
+
+      # ================================================================
+      # Load existing AI comments
+      #
+      # We only inspect comments containing our fingerprint marker.
+      # Developer comments and old unmarked comments are untouched.
+      # ================================================================
+
+      - name: Load existing AI review comments
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Loading existing inline PR comments..."
+
+          gh api \
+            --paginate \
+            "repos/$REPOSITORY/pulls/$PR_NUMBER/comments?per_page=100" \
+            > existing-inline-pages.json
+
+          echo "Loading existing general PR comments..."
+
+          gh api \
+            --paginate \
+            "repos/$REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+            > existing-general-pages.json
+
+          jq -s 'add // []' \
+            existing-inline-pages.json \
+            > existing-inline-comments.json
+
+          jq -s 'add // []' \
+            existing-general-pages.json \
+            > existing-general-comments.json
+
+          echo
+          echo "Existing inline comments:"
+          jq 'length' existing-inline-comments.json
+
+          echo "Existing general comments:"
+          jq 'length' existing-general-comments.json
+
+      # ================================================================
+      # Remove duplicate fingerprinted comments already on the PR
+      #
+      # We keep the first occurrence of every fingerprint.
+      #
+      # This only touches comments containing our explicit fingerprint
+      # marker. Developer comments and old unmarked AI comments are safe.
+      # ================================================================
+
+      - name: Remove duplicate AI review comments
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          declare -A SEEN_FINGERPRINTS=()
+
+          echo "Checking inline comments for duplicates..."
+
+          while IFS= read -r comment; do
+            COMMENT_ID=$(echo "$comment" | jq -r '.id')
+            BODY=$(echo "$comment" | jq -r '.body // ""')
+
+            FINGERPRINT=$(
+              printf '%s\n' "$BODY" \
+                | sed -n \
+                  's/.*<!-- ai-code-review-fingerprint:\([a-f0-9]\{64\}\) -->.*/\1/p' \
+                | head -n 1
+            )
+
+            if [ -z "$FINGERPRINT" ]; then
+              continue
+            fi
+
+            if [ "${SEEN_FINGERPRINTS[$FINGERPRINT]+x}" ]; then
+              echo "Deleting duplicate inline AI comment:"
+              echo "  ID: $COMMENT_ID"
+              echo "  fingerprint: $FINGERPRINT"
+
+              gh api \
+                --method DELETE \
+                "repos/$REPOSITORY/pulls/comments/$COMMENT_ID"
+
+              continue
+            fi
+
+            SEEN_FINGERPRINTS[$FINGERPRINT]=1
+
+          done < <(
+            jq -c '.[]' existing-inline-comments.json
+          )
+
+          echo
+          echo "Checking general comments for duplicates..."
+
+          while IFS= read -r comment; do
+            COMMENT_ID=$(echo "$comment" | jq -r '.id')
+            BODY=$(echo "$comment" | jq -r '.body // ""')
+
+            FINGERPRINTS=$(
+              printf '%s\n' "$BODY" \
+                | grep -oE \
+                  'ai-code-review-fingerprint:[a-f0-9]{64}' \
+                | sed 's/ai-code-review-fingerprint://' \
+                || true
+            )
+
+            if [ -z "$FINGERPRINTS" ]; then
+              continue
+            fi
+
+            DUPLICATE_COMMENT=false
+
+            while IFS= read -r FINGERPRINT; do
+              [ -z "$FINGERPRINT" ] && continue
+
+              if [ "${SEEN_FINGERPRINTS[$FINGERPRINT]+x}" ]; then
+                DUPLICATE_COMMENT=true
+
+                echo "Duplicate general AI comment:"
+                echo "  ID: $COMMENT_ID"
+                echo "  fingerprint: $FINGERPRINT"
+
+                break
+              fi
+
+              SEEN_FINGERPRINTS[$FINGERPRINT]=1
+
+            done <<< "$FINGERPRINTS"
+
+            if [ "$DUPLICATE_COMMENT" = "true" ]; then
+              echo "Deleting duplicate general AI comment:"
+              echo "  ID: $COMMENT_ID"
+
+              gh api \
+                --method DELETE \
+                "repos/$REPOSITORY/issues/comments/$COMMENT_ID"
+            fi
+
+          done < <(
+            jq -c '.[]' existing-general-comments.json
+          )
+
+      # ================================================================
+      # Build current fingerprint list AFTER duplicate cleanup
+      # ================================================================
+
+      - name: Build existing finding fingerprints
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -f existing-fingerprints.txt
+          touch existing-fingerprints.txt
+
+          jq -r '
+            .[]
+            | .body // ""
+            | scan("ai-code-review-fingerprint:[a-f0-9]{64}")
+            | sub("ai-code-review-fingerprint:"; "")
+          ' existing-inline-comments.json \
+            >> existing-fingerprints.txt || true
+
+          jq -r '
+            .[]
+            | .body // ""
+            | scan("ai-code-review-fingerprint:[a-f0-9]{64}")
+            | sub("ai-code-review-fingerprint:"; "")
+          ' existing-general-comments.json \
+            >> existing-fingerprints.txt || true
+
+          sort -u \
+            existing-fingerprints.txt \
+            -o existing-fingerprints.txt
+
+          echo "Existing AI finding fingerprints:"
+          cat existing-fingerprints.txt || true
+
+      # ================================================================
+      # Post new inline findings
+      # ================================================================
+
+      - name: Post new inline AI findings
         if: steps.agent2.outputs.is_agent2_commit != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -306,177 +788,131 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Preparing AI review comments..."
+          POSTED=0
+          SKIPPED=0
 
-          php -r '
-          $data = json_decode(file_get_contents("review-result.json"), true, 512, JSON_THROW_ON_ERROR);
+          while IFS= read -r comment; do
+            FINGERPRINT=$(echo "$comment" | jq -r '.fingerprint')
 
-          $diff = file_get_contents("changed-lines.diff");
+            if grep -Fxq \
+              "$FINGERPRINT" \
+              existing-fingerprints.txt; then
 
-          $changedLines = [];
-          $currentFile = null;
+              echo "Skipping existing inline finding:"
+              echo "  fingerprint: $FINGERPRINT"
 
-          $lines = preg_split("/\\r?\\n/", $diff);
+              SKIPPED=$((SKIPPED + 1))
 
-          foreach ($lines as $diffLine) {
-              if (preg_match("/^\\+\\+\\+ b\\/(.+)$/", $diffLine, $matches)) {
-                  $currentFile = $matches[1];
-                  $changedLines[$currentFile] ??= [];
-                  continue;
-              }
+              continue
+            fi
 
-              if ($currentFile === null) {
-                  continue;
-              }
+            BODY=$(echo "$comment" | jq -r '.body')
+            PATH_VALUE=$(echo "$comment" | jq -r '.path')
+            LINE=$(echo "$comment" | jq -r '.line')
+            SIDE=$(echo "$comment" | jq -r '.side')
 
-              if (preg_match("/^@@ .* \\+(\\d+)(?:,(\\d+))? @@/", $diffLine, $matches)) {
-                  $start = (int) $matches[1];
-                  $count = isset($matches[2]) ? (int) $matches[2] : 1;
+            echo "Posting new inline finding:"
+            echo "  ${PATH_VALUE}:${LINE}"
+            echo "  fingerprint: $FINGERPRINT"
 
-                  for ($line = $start; $line < $start + $count; $line++) {
-                      $changedLines[$currentFile][$line] = true;
-                  }
-              }
-          }
+            gh api \
+              --method POST \
+              "repos/$REPOSITORY/pulls/$PR_NUMBER/comments" \
+              -f body="$BODY" \
+              -f commit_id="$HEAD_SHA" \
+              -f path="$PATH_VALUE" \
+              -F line="$LINE" \
+              -f side="$SIDE"
 
-          $inlineComments = [];
-          $generalFindings = [];
+            printf '%s\n' "$FINGERPRINT" \
+              >> existing-fingerprints.txt
 
-          foreach ($data["reviews"] ?? [] as $file => $review) {
-              if (!is_array($review)) {
-                  continue;
-              }
+            POSTED=$((POSTED + 1))
 
-              if (!isset($review["findings"]) || !is_array($review["findings"])) {
-                  continue;
-              }
+          done < <(
+            jq -c '.[]' review-inline-comments.json
+          )
 
-              $file = ltrim((string) $file, "/");
+          echo
+          echo "Inline findings posted: $POSTED"
+          echo "Inline findings skipped: $SKIPPED"
 
-              foreach ($review["findings"] as $finding) {
-                  $line = (int) ($finding["line"] ?? 0);
+      # ================================================================
+      # Post new general findings
+      #
+      # One finding = one general PR comment.
+      #
+      # This makes stable deduplication possible even when the finding
+      # cannot be attached to a changed line.
+      # ================================================================
 
-                  if ($line <= 0) {
-                      continue;
-                  }
+      - name: Post new general AI findings
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
-                  $severity = strtoupper((string) ($finding["severity"] ?? "unknown"));
-                  $category = (string) ($finding["category"] ?? "unknown");
-                  $message = trim((string) ($finding["message"] ?? ""));
-                  $suggestion = trim((string) ($finding["suggestion"] ?? ""));
+          POSTED=0
+          SKIPPED=0
 
-                  $body = "### 🤖 AI Code Review\n\n";
-                  $body .= "**{$severity}** · `{$category}`\n\n";
-                  $body .= $message;
+          while IFS= read -r finding; do
+            FINGERPRINT=$(echo "$finding" | jq -r '.fingerprint')
 
-                  if ($suggestion !== "") {
-                      $body .= "\n\n**Suggestion:** {$suggestion}";
-                  }
+            if grep -Fxq \
+              "$FINGERPRINT" \
+              existing-fingerprints.txt; then
 
-                  if (isset($changedLines[$file][$line])) {
-                      $inlineComments[] = [
-                          "path" => $file,
-                          "line" => $line,
-                          "side" => "RIGHT",
-                          "body" => $body,
-                      ];
-                  } else {
-                      $generalFindings[] = [
-                          "file" => $file,
-                          "line" => $line,
-                          "severity" => $severity,
-                          "category" => $category,
-                          "message" => $message,
-                          "suggestion" => $suggestion,
-                      ];
-                  }
-              }
-          }
+              echo "Skipping existing general finding:"
+              echo "  fingerprint: $FINGERPRINT"
 
-          file_put_contents(
-              "review-inline-comments.json",
-              json_encode(
-                  $inlineComments,
-                  JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
-              )
-          );
+              SKIPPED=$((SKIPPED + 1))
 
-          if ($generalFindings === []) {
-              file_put_contents("review-general-comment.md", "");
-          } else {
-              $body = "<!-- ai-code-review:" . getenv("HEAD_SHA") . " -->\n";
-              $body .= "## 🤖 AI Code Review\n\n";
-              $body .= "The following findings are in changed PHP files, but their reported lines are not part of the changed lines in this PR. They are therefore shown here instead of as inline comments.\n\n";
+              continue
+            fi
 
-              foreach ($generalFindings as $finding) {
-                  $body .= "### `{$finding["file"]}:{$finding["line"]}`\n\n";
-                  $body .= "**{$finding["severity"]}** · `{$finding["category"]}`\n\n";
-                  $body .= $finding["message"];
+            BODY=$(echo "$finding" | jq -r '.body')
 
-                  if ($finding["suggestion"] !== "") {
-                      $body .= "\n\n**Suggestion:** {$finding["suggestion"]}";
-                  }
-
-                  $body .= "\n\n---\n\n";
-              }
-
-              file_put_contents("review-general-comment.md", $body);
-          }
-
-          echo "Changed lines:\n";
-
-          if ($changedLines === []) {
-              echo "  NONE\n";
-          } else {
-              foreach ($changedLines as $file => $lines) {
-                  $lineNumbers = array_keys($lines);
-                  sort($lineNumbers, SORT_NUMERIC);
-
-                  echo "  {$file}: " . implode(", ", $lineNumbers) . "\n";
-              }
-          }
-
-          echo "Prepared " . count($inlineComments) . " inline comment(s).\n";
-          echo "Prepared " . count($generalFindings) . " general finding(s).\n";
-          '
-
-          INLINE_COUNT=$(jq 'length' review-inline-comments.json)
-
-          echo "Inline comment count: $INLINE_COUNT"
-
-          if [ "$INLINE_COUNT" -gt 0 ]; then
-            echo "Posting inline PR comments..."
-
-            while IFS= read -r comment; do
-              BODY=$(echo "$comment" | jq -r '.body')
-              PATH_VALUE=$(echo "$comment" | jq -r '.path')
-              LINE=$(echo "$comment" | jq -r '.line')
-              SIDE=$(echo "$comment" | jq -r '.side')
-
-              echo "Posting inline comment: ${PATH_VALUE}:${LINE}"
-
-              gh api \
-                --method POST \
-                "repos/$REPOSITORY/pulls/$PR_NUMBER/comments" \
-                -f body="$BODY" \
-                -f commit_id="$HEAD_SHA" \
-                -f path="$PATH_VALUE" \
-                -F line="$LINE" \
-                -f side="$SIDE"
-            done < <(jq -c '.[]' review-inline-comments.json)
-          else
-            echo "No inline comments to post."
-          fi
-
-          if [ -s review-general-comment.md ]; then
-            echo "Posting general PR comment..."
+            echo "Posting new general finding:"
+            echo "  fingerprint: $FINGERPRINT"
 
             gh api \
               --method POST \
               "repos/$REPOSITORY/issues/$PR_NUMBER/comments" \
-              -f body="$(cat review-general-comment.md)"
+              -f body="$BODY"
 
-            echo "General AI review comment posted."
-          else
-            echo "No general findings to post."
-          fi
+            printf '%s\n' "$FINGERPRINT" \
+              >> existing-fingerprints.txt
+
+            POSTED=$((POSTED + 1))
+
+          done < <(
+            jq -c '.[]' review-general-comments.json
+          )
+
+          echo
+          echo "General findings posted: $POSTED"
+          echo "General findings skipped: $SKIPPED"
+
+      # ================================================================
+      # Cleanup temporary files
+      # ================================================================
+
+      - name: Cleanup review comment files
+        if: always() && steps.agent2.outputs.is_agent2_commit != 'true'
+        shell: bash
+        run: |
+          rm -f \
+            ai-review.txt \
+            changed-lines.diff \
+            changed-lines.json \
+            review-inline-comments.json \
+            review-general-comments.json \
+            existing-inline-pages.json \
+            existing-general-pages.json \
+            existing-inline-comments.json \
+            existing-general-comments.json \
+            existing-fingerprints.txt
