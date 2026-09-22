@@ -5,5 +5,6 @@ function test(): string
     return []. "Hello, World!";
     
 
-    echo "This line is unreachable.";
+    echo "This line is unreachable." ;
+    ;
 }
