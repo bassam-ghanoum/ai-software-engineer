@@ -83,13 +83,13 @@ jobs:
             echo "is_agent2_commit=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Find exact successful AI Code Review
+      - name: Find successful AI Code Review
         id: review
         if: steps.agent2.outputs.is_agent2_commit != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.issue.number }}
           REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           BASE_SHA: ${{ steps.pr.outputs.base_sha }}
         shell: bash
@@ -97,64 +97,41 @@ jobs:
           set -euo pipefail
 
           echo "Looking for AI Code Review for:"
+          echo
           echo "HEAD: $HEAD_SHA"
+          echo
           echo "BASE: $BASE_SHA"
+          echo
 
-          RUN_ID=$(
+          REVIEW_RUN_ID=$(
             gh run list \
               --repo "$REPOSITORY" \
-              --workflow=ai-code-review.yml \
-              --limit=100 \
-              --json databaseId,headSha,status,conclusion \
-              | jq -r --arg SHA "$HEAD_SHA" '
-                  .[]
-                  | select(.headSha == $SHA)
-                  | select(.status == "completed")
-                  | select(.conclusion == "success")
-                  | .databaseId
-                ' \
-              | head -n 1
-          )
-
-          if [ -z "$RUN_ID" ]; then
-            echo "stale_approval=true" >> "$GITHUB_OUTPUT"
-            echo "No successful AI Code Review exists for the current PR HEAD."
-            echo "The approval is stale. No AI fix will be executed."
-            exit 0
-          fi
-
-          ARTIFACT_NAME="ai-review-${HEAD_SHA}"
-
-          ARTIFACT_ID=$(
-            gh api \
-              --paginate \
-              "repos/$REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
-              --jq --arg NAME "$ARTIFACT_NAME" '
-                .artifacts[]
-                | select(.name == $NAME)
-                | select(.expired == false)
-                | .id
+              --workflow "ai-code-review.yml" \
+              --limit 100 \
+              --json "databaseId,headSha,status,conclusion" \
+            | jq -r --arg SHA "$HEAD_SHA" '
+                .[]
+                | select(.headSha == $SHA)
+                | select(.status == "completed")
+                | select(.conclusion == "success")
+                | .databaseId
               ' \
-              | head -n 1
+            | head -n 1
           )
 
-          if [ -z "$ARTIFACT_ID" ]; then
+          if [ -z "$REVIEW_RUN_ID" ]; then
+            echo "No successful AI Code Review found for HEAD $HEAD_SHA."
+
             echo "stale_approval=true" >> "$GITHUB_OUTPUT"
-            echo "The successful review run exists, but its exact artifact is missing or expired."
-            echo "The approval is stale. No AI fix will be executed."
+
             exit 0
           fi
 
-          echo "Found AI Code Review run: $RUN_ID"
-          echo "Found valid review artifact: $ARTIFACT_NAME"
+          echo "Found successful AI Code Review:"
+          echo "Run ID: $REVIEW_RUN_ID"
 
-          {
-            echo "stale_approval=false"
-            echo "run_id=$RUN_ID"
-            echo "artifact_id=$ARTIFACT_ID"
-            echo "artifact_name=$ARTIFACT_NAME"
-          } >> "$GITHUB_OUTPUT"
-
+          echo "review_run_id=$REVIEW_RUN_ID" >> "$GITHUB_OUTPUT"
+          
       - name: Report stale approval
         if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval == 'true'
         env:
