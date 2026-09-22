@@ -169,6 +169,19 @@ jobs:
 
           echo "Review result is bound to the current PR HEAD and BASE."
 
+      - name: Debug review result structure
+        if: steps.agent2.outputs.is_agent2_commit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "===== review-result.json ====="
+          cat review-result.json
+
+          echo
+          echo "===== top-level JSON keys ====="
+          jq -r 'keys[]' review-result.json
+
       - name: Upload review artifact
         if: steps.agent2.outputs.is_agent2_commit != 'true'
         uses: actions/upload-artifact@v4
