@@ -328,67 +328,13 @@ jobs:
               JSON_THROW_ON_ERROR
           );
 
-          echo "Changed-line map:\n";
-          print_r($changedLines);
-
           $comments = [];
 
-          $addComment = static function (
-              array &$comments,
-              string $file,
-              int $line,
-              string $message,
-              string $severity,
-              string $category,
-              string $suggestion
-          ): void {
-              $file = ltrim($file, '/');
-
-              if (
-                  $file === '' ||
-                  $line < 1 ||
-                  $message === ''
-              ) {
-                  return;
-              }
-
-              $body = '';
-
-              if ($severity !== '') {
-                  $body .= '**' . strtoupper($severity) . '**';
-              }
-
-              if ($category !== '') {
-                  if ($body !== '') {
-                      $body .= ' · ';
-                  }
-
-                  $body .= $category;
-              }
-
-              if ($body !== '') {
-                  $body .= "\n\n";
-              }
-
-              $body .= $message;
-
-              if ($suggestion !== '') {
-                  $body .= "\n\n**Suggestion:** " . $suggestion;
-              }
-
-              $comments[] = [
-                  'path' => $file,
-                  'line' => $line,
-                  'side' => 'RIGHT',
-                  'body' => $body,
-              ];
-          };
-
           if (
-              !isset($data['findings']) ||
-              !is_array($data['findings'])
+              !isset($data['reviews']) ||
+              !is_array($data['reviews'])
           ) {
-              echo "No findings section found.\n";
+              echo "No reviews section found.\n";
 
               file_put_contents(
                   'review-comments.json',
@@ -398,117 +344,113 @@ jobs:
               exit(0);
           }
 
-          foreach ($data['findings'] as $finding) {
-              if (!is_array($finding)) {
+          foreach ($data['reviews'] as $file => $review) {
+              if (!is_array($review)) {
                   continue;
               }
-
-              $file = null;
-
-              foreach ([
-                  'file',
-                  'file_path',
-                  'path',
-                  'filePath',
-              ] as $key) {
-                  if (
-                      isset($finding[$key]) &&
-                      is_string($finding[$key]) &&
-                      $finding[$key] !== ''
-                  ) {
-                      $file = ltrim($finding[$key], '/');
-                      break;
-                  }
-              }
-
-              $line = null;
-
-              foreach ([
-                  'line',
-                  'line_number',
-                  'lineNumber',
-              ] as $key) {
-                  if (
-                      isset($finding[$key]) &&
-                      is_numeric($finding[$key])
-                  ) {
-                      $line = (int) $finding[$key];
-                      break;
-                  }
-              }
-
-              $message = '';
-
-              foreach ([
-                  'message',
-                  'description',
-              ] as $key) {
-                  if (
-                      isset($finding[$key]) &&
-                      is_string($finding[$key]) &&
-                      $finding[$key] !== ''
-                  ) {
-                      $message = $finding[$key];
-                      break;
-                  }
-              }
-
-              $severity = isset($finding['severity'])
-                  ? (string) $finding['severity']
-                  : '';
-
-              $category = isset($finding['category'])
-                  ? (string) $finding['category']
-                  : '';
-
-              $suggestion = isset($finding['suggestion'])
-                  ? (string) $finding['suggestion']
-                  : '';
-
-              echo "Finding:\n";
-              echo "  file: " . ($file ?? 'NULL') . "\n";
-              echo "  line: " . ($line ?? 'NULL') . "\n";
-              echo "  message: {$message}\n";
 
               if (
-                  $file === null ||
-                  $line === null ||
-                  $message === ''
+                  !isset($review['findings']) ||
+                  !is_array($review['findings'])
               ) {
-                  echo "  SKIPPED: incomplete finding.\n";
+                  echo "No findings for {$file}.\n";
                   continue;
               }
+
+              $file = ltrim((string) $file, '/');
+
+              echo "Processing file: {$file}\n";
 
               $availableLines = $changedLines[$file] ?? [];
 
-              echo "  changed lines: " .
+              echo "Changed lines: " .
                   ($availableLines === []
                       ? 'NONE'
                       : implode(', ', $availableLines)) .
                   "\n";
 
-              if (
-                  !in_array(
-                      $line,
-                      $availableLines,
-                      true
-                  )
-              ) {
-                  echo "  SKIPPED: line is not a changed PR line.\n";
-                  continue;
+              foreach ($review['findings'] as $finding) {
+                  if (!is_array($finding)) {
+                      continue;
+                  }
+
+                  if (
+                      !isset($finding['line']) ||
+                      !is_numeric($finding['line'])
+                  ) {
+                      echo "Skipping finding without a valid line.\n";
+                      continue;
+                  }
+
+                  $line = (int) $finding['line'];
+
+                  $message = isset($finding['message'])
+                      ? (string) $finding['message']
+                      : '';
+
+                  $severity = isset($finding['severity'])
+                      ? (string) $finding['severity']
+                      : '';
+
+                  $category = isset($finding['category'])
+                      ? (string) $finding['category']
+                      : '';
+
+                  $suggestion = isset($finding['suggestion'])
+                      ? (string) $finding['suggestion']
+                      : '';
+
+                  echo "Finding: {$file}:{$line}\n";
+
+                  if ($message === '') {
+                      echo "  SKIPPED: finding has no message.\n";
+                      continue;
+                  }
+
+                  if (
+                      !in_array(
+                          $line,
+                          $availableLines,
+                          true
+                      )
+                  ) {
+                      echo "  SKIPPED: line {$line} is not a changed PR line.\n";
+                      continue;
+                  }
+
+                  $body = '';
+
+                  if ($severity !== '') {
+                      $body .= '**' . strtoupper($severity) . '**';
+                  }
+
+                  if ($category !== '') {
+                      if ($body !== '') {
+                          $body .= ' · ';
+                      }
+
+                      $body .= $category;
+                  }
+
+                  if ($body !== '') {
+                      $body .= "\n\n";
+                  }
+
+                  $body .= $message;
+
+                  if ($suggestion !== '') {
+                      $body .= "\n\n**Suggestion:** " . $suggestion;
+                  }
+
+                  $comments[] = [
+                      'path' => $file,
+                      'line' => $line,
+                      'side' => 'RIGHT',
+                      'body' => $body,
+                  ];
+
+                  echo "  MATCHED: PR line comment prepared.\n";
               }
-
-              echo "  MATCHED: preparing GitHub PR line comment.\n";
-
-              $addComment(
-                  $comments,
-                  $file,
-                  $line,
-                  $message,
-                  $severity,
-                  $category,
-                  $suggestion
-              );
           }
 
           $unique = [];
@@ -538,7 +480,6 @@ jobs:
           echo "\nPrepared " .
               count($comments) .
               " valid PR line review comment(s).\n";
-
           PHP
 
           COMMENT_COUNT=$(jq 'length' review-comments.json)
@@ -568,3 +509,9 @@ jobs:
             --method POST \
             "repos/$REPOSITORY/pulls/$PR_NUMBER/reviews" \
             --input review-payload.json
+
+          rm -f \
+            review-comments.json \
+            review-payload.json \
+            changed-lines.diff \
+            changed-lines.json
