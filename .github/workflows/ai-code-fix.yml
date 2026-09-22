@@ -232,7 +232,8 @@ jobs:
             gh api \
               --paginate \
               "repos/$REPOSITORY/actions/runs/$REVIEW_RUN_ID/artifacts" \
-              --jq --arg NAME "$ARTIFACT_NAME" '
+            | jq -r \
+              --arg NAME "$ARTIFACT_NAME" '
                 .artifacts[]
                 | select(.name == $NAME)
                 | select(.expired == false)
@@ -258,7 +259,7 @@ jobs:
 
           echo "Downloaded AI review artifact:"
           find ai-review -maxdepth 2 -type f -print
-
+        
       - name: Validate persisted review
         if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
         id: validate-review
