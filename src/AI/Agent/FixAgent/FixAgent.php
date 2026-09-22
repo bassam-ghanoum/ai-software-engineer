@@ -6,6 +6,7 @@ namespace App\AI\Agent\FixAgent;
 
 use App\AI\LLM\LlmInterface;
 use App\AI\Review\ReviewResult;
+use RuntimeException;
 
 final class FixAgent implements FixAgentInterface
 {
@@ -18,6 +19,7 @@ final class FixAgent implements FixAgentInterface
         string $filePath,
         string $sourceCode,
         ReviewResult $reviewResult,
+        ?string $previousFailure = null,
     ): string {
         if (!$reviewResult->hasFindings()) {
             return $sourceCode;
@@ -27,17 +29,19 @@ final class FixAgent implements FixAgentInterface
             $filePath,
             $sourceCode,
             $reviewResult,
+            $previousFailure,
         );
 
         $generatedSource = $this->llm->generate($prompt);
 
-        return $this->extractSource($generatedSource);
+        return $this->extractSource($generatedSource, $filePath);
     }
 
     private function buildPrompt(
         string $filePath,
         string $sourceCode,
         ReviewResult $reviewResult,
+        ?string $previousFailure,
     ): string {
         $findings = [];
 
@@ -53,6 +57,26 @@ final class FixAgent implements FixAgentInterface
         }
 
         $formattedFindings = $this->formatFindings($findings);
+
+        $retryFeedback = '';
+
+        if ($previousFailure !== null) {
+            $retryFeedback = <<<FEEDBACK
+
+IMPORTANT — YOUR PREVIOUS ATTEMPT WAS REJECTED.
+
+The validation failure was:
+
+{$previousFailure}
+
+You MUST correct the rejected issue in this attempt.
+
+Do not merely repeat the previous output.
+Make the smallest possible additional change required to satisfy
+the approved review findings and the validation failure.
+
+FEEDBACK;
+        }
 
         return <<<PROMPT
 You are Agent 2, an AI code-fixing agent.
@@ -71,6 +95,7 @@ FILE:
 
 APPROVED REVIEW FINDINGS:
 {$formattedFindings}
+{$retryFeedback}
 
 ORIGINAL SOURCE:
 ---BEGIN SOURCE---
@@ -128,118 +153,117 @@ PROMPT;
     }
 
     /**
-     * Extract only the PHP source from the LLM response.
-     */
-    private function extractSource(string $generatedSource): string
-    {
-        $source = trim($generatedSource);
-
-        if ($source === '') {
-            throw new \RuntimeException(
-                'Agent 2 returned an empty source file.',
-            );
-        }
-
-        /*
-         * Preferred format:
-         *
-         * ```php
-         * <?php
-         * ...
-         * ```
-         */
-        if (preg_match(
-            '/```(?:php)?\s*(.*?)```/is',
-            $source,
-            $matches,
-        )) {
-            $source = trim($matches[1]);
-        }
-
-        /*
-         * Handle our diagnostic/output wrapper if it is returned by the LLM:
-         *
-         * --- Agent 2 generated source for fixtures/test1.php ---
-         * <?php
-         * ...
-         * ---END SOURCE---
-         */
-        $beginMarker = '--- Agent 2 generated source';
-        $endMarker = '---END SOURCE---';
-
-        $beginPosition = strpos($source, $beginMarker);
-
-        if ($beginPosition !== false) {
-            $afterBegin = strpos($source, "\n", $beginPosition);
-
-            if ($afterBegin === false) {
-                throw new \RuntimeException(
-                    'Agent 2 returned an invalid source wrapper.',
-                );
-            }
-
-            $source = substr($source, $afterBegin + 1);
-
-            $endPosition = strpos($source, $endMarker);
-
-            if ($endPosition !== false) {
-                $source = substr($source, 0, $endPosition);
-            }
-
-            $source = trim($source);
-        } else {
-            /*
-             * Even if the beginning marker is missing, never allow the
-             * explicit end marker to reach the PHP validator.
-             */
-            $endPosition = strpos($source, $endMarker);
-
-            if ($endPosition !== false) {
-                $source = substr($source, 0, $endPosition);
-                $source = trim($source);
-            }
-        }
-
-        if ($source === '') {
-            throw new \RuntimeException(
-                'Agent 2 returned empty PHP source after extraction.',
-            );
-        }
-
-        /*
-         * The prompt requires raw PHP source. If the model nevertheless
-         * returned prose before the PHP opening tag, discard that prose.
-         */
-        $phpPosition = strpos($source, '<?php');
-
-        if ($phpPosition !== false && $phpPosition > 0) {
-            $source = substr($source, $phpPosition);
-            $source = ltrim($source);
-        }
-
-        /*
-         * Never allow Markdown fences or our wrapper marker to survive.
-         */
-        if (str_contains($source, '---END SOURCE---')) {
-            throw new \RuntimeException(
-                'Agent 2 returned an invalid source containing the END SOURCE marker.',
-            );
-        }
-
-        if (str_contains($source, '```')) {
-            throw new \RuntimeException(
-                'Agent 2 returned an invalid source containing Markdown code fences.',
-            );
-        }
-
-        return $source;
-    }
-
-    /**
      * @param array<int, string> $findings
      */
     private function formatFindings(array $findings): string
     {
         return implode("\n", $findings);
+    }
+
+    private function extractSource(
+        string $generatedSource,
+        string $filePath,
+    ): string {
+        $source = trim($generatedSource);
+
+        if ($source === '') {
+            throw new RuntimeException(
+                sprintf(
+                    'Agent 2 returned empty source for %s.',
+                    $filePath,
+                ),
+            );
+        }
+
+        /*
+         * Handle Markdown code fences if the model ignores the instruction.
+         */
+        if (
+            str_starts_with($source, '```php')
+            && str_ends_with($source, '```')
+        ) {
+            $source = trim(substr($source, 6, -3));
+        } elseif (
+            str_starts_with($source, '```')
+            && str_ends_with($source, '```')
+        ) {
+            $source = trim(substr($source, 3, -3));
+        }
+
+        /*
+         * Handle the source markers sometimes returned by the model.
+         */
+        $beginMarker = '---BEGIN SOURCE---';
+        $endMarker = '---END SOURCE---';
+
+        $beginPosition = strpos($source, $beginMarker);
+        $endPosition = strrpos($source, $endMarker);
+
+        if ($beginPosition !== false) {
+            $source = substr(
+                $source,
+                $beginPosition + strlen($beginMarker),
+            );
+
+            $endPosition = strrpos($source, $endMarker);
+
+            if ($endPosition !== false) {
+                $source = substr($source, 0, $endPosition);
+            }
+        }
+
+        /*
+         * Remove accidental Agent 2 presentation markers.
+         */
+        $source = preg_replace(
+            '/^---\s*Agent 2 generated source.*?---\s*$/mi',
+            '',
+            $source,
+        ) ?? $source;
+
+        $source = preg_replace(
+            '/^---\s*End Agent 2 generated source.*?---\s*$/mi',
+            '',
+            $source,
+        ) ?? $source;
+
+        $source = trim($source);
+
+        /*
+         * The PHP source must start at the PHP opening tag.
+         */
+        $phpPosition = strpos($source, '<?php');
+
+        if ($phpPosition === false) {
+            throw new RuntimeException(
+                sprintf(
+                    'Agent 2 did not return valid PHP source for %s: missing <?php opening tag.',
+                    $filePath,
+                ),
+            );
+        }
+
+        if ($phpPosition > 0) {
+            $source = substr($source, $phpPosition);
+        }
+
+        /*
+         * Safety boundary: no model presentation markers may reach
+         * PhpSourceValidator.
+         */
+        if (
+            str_contains($source, $beginMarker) ||
+            str_contains($source, $endMarker) ||
+            str_contains($source, '```')
+        ) {
+            throw new RuntimeException(
+                sprintf(
+                    'Agent 2 returned source containing unsupported output markers for %s.',
+                    $filePath,
+                ),
+            );
+        }
+
+        return rtrim($source) . PHP_EOL;
     }
 }

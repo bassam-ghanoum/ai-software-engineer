@@ -482,17 +482,16 @@ PHP;
             ->willReturn($source);
 
         $fixAgent
-            ->expects(self::once())
+            ->expects(self::exactly(3))
             ->method('fix')
-            ->with(
-                'src/Test.php',
-                $source,
-                $review,
-            )
-            ->willReturn($invalidFixedSource);
+            ->willReturnOnConsecutiveCalls(
+                $invalidFixedSource,
+                $invalidFixedSource,
+                $invalidFixedSource,
+            );
 
         $sourceValidator
-            ->expects(self::once())
+            ->expects(self::exactly(3))
             ->method('validate')
             ->with(
                 'src/Test.php',
@@ -574,17 +573,16 @@ PHP;
             ->willReturn($originalSource);
 
         $fixAgent
-            ->expects(self::once())
+            ->expects(self::exactly(3))
             ->method('fix')
-            ->with(
-                'fixtures/test1.php',
-                $originalSource,
-                $reviewResult,
-            )
-            ->willReturn($fixedSource);
+            ->willReturnOnConsecutiveCalls(
+                $fixedSource,
+                $fixedSource,
+                $fixedSource,
+            );
 
         $sourceValidator
-            ->expects(self::once())
+            ->expects(self::exactly(3))
             ->method('validate')
             ->with(
                 'fixtures/test1.php',
@@ -592,7 +590,7 @@ PHP;
             );
 
         $fixScopeValidator
-            ->expects(self::once())
+            ->expects(self::exactly(3))
             ->method('validate')
             ->with(
                 'fixtures/test1.php',
@@ -643,8 +641,8 @@ PHP;
         ]);
     }
 
-private function createPassingFixScopeValidator(): FixScopeValidatorInterface
-{
-    return $this->createStub(FixScopeValidatorInterface::class);
-}
+    private function createPassingFixScopeValidator(): FixScopeValidatorInterface
+    {
+        return $this->createStub(FixScopeValidatorInterface::class);
+    }
 }
