@@ -17,13 +17,19 @@ concurrency:
 jobs:
   ai-fix:
     name: ai-fix
+
     if: >
       github.event.issue.pull_request &&
       github.event.comment.user.login == github.event.issue.user.login &&
       startsWith(github.event.comment.body, '@ai-fix approve')
+
     runs-on: ubuntu-latest
 
     steps:
+      # ================================================================
+      # Read current PR state
+      # ================================================================
+
       - name: Read current PR state
         id: pr
         env:
@@ -56,8 +62,12 @@ jobs:
             echo "base_sha=$BASE_SHA"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Detect Agent 2 commit
-        id: agent2
+      # ================================================================
+      # Detect AI-Code-Fix-agent commit
+      # ================================================================
+
+      - name: Detect Fix-Agent commit
+        id: aI-code-fix-agent
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -76,20 +86,97 @@ jobs:
           echo "$COMMIT_MESSAGE"
 
           if [ "$COMMIT_MESSAGE" = "Apply AI code fixes" ]; then
-            echo "is_agent2_commit=true" >> "$GITHUB_OUTPUT"
-            echo "Current PR HEAD was created by Agent 2."
+            echo "is_aI-code-fix-agent_commit=true" >> "$GITHUB_OUTPUT"
+
+            echo "Current PR HEAD was created by Fix-Agent."
             echo "This approval cannot trigger another AI fix."
           else
-            echo "is_agent2_commit=false" >> "$GITHUB_OUTPUT"
+            echo "is_aI-code-fix-agent_commit=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Find exact successful AI Code Review
-        id: review
-        if: steps.agent2.outputs.is_agent2_commit != 'true'
+      # ================================================================
+      # Prevent reuse of the exact same approval comment
+      # ================================================================
+
+      - name: Check whether approval was already consumed
+        id: approval
+        if: steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.issue.number }}
           REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MARKER="ai-fix-approval-consumed:${COMMENT_ID}:${HEAD_SHA}"
+
+          echo "Approval marker:"
+          echo "$MARKER"
+
+          EXISTING=$(
+            gh api \
+              --paginate \
+              "repos/$REPOSITORY/issues/$PR_NUMBER/comments?per_page=100" \
+              | jq -r \
+                --arg MARKER "$MARKER" \
+                '[.[] | select((.body // "") | contains($MARKER))] | length'
+          )
+
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "already_consumed=true" >> "$GITHUB_OUTPUT"
+
+            echo "This exact approval has already been consumed."
+            echo "AI-Code-Fix-agent will not run again."
+          else
+            echo "already_consumed=false" >> "$GITHUB_OUTPUT"
+
+            echo "This approval has not been consumed yet."
+          fi
+
+      # ================================================================
+      # Report duplicate approval
+      # ================================================================
+
+      - name: Report consumed approval
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > consumed-approval.md <<EOF
+          ## 🤖 AI Code Fix
+
+          This exact \`@ai-fix approve\` comment has already been consumed.
+
+          No additional AI fix was executed.
+          EOF
+
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file consumed-approval.md
+
+      # ================================================================
+      # Find successful AI Code Review
+      # ================================================================
+
+      - name: Find successful AI Code Review
+        id: review
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           BASE_SHA: ${{ steps.pr.outputs.base_sha }}
         shell: bash
@@ -97,66 +184,51 @@ jobs:
           set -euo pipefail
 
           echo "Looking for AI Code Review for:"
+          echo
           echo "HEAD: $HEAD_SHA"
+          echo
           echo "BASE: $BASE_SHA"
+          echo
 
-          RUN_ID=$(
+          REVIEW_RUN_ID=$(
             gh run list \
               --repo "$REPOSITORY" \
-              --workflow=ai-code-review.yml \
-              --limit=100 \
-              --json databaseId,headSha,status,conclusion \
-              | jq -r --arg SHA "$HEAD_SHA" '
-                  .[]
-                  | select(.headSha == $SHA)
-                  | select(.status == "completed")
-                  | select(.conclusion == "success")
-                  | .databaseId
-                ' \
-              | head -n 1
-          )
-
-          if [ -z "$RUN_ID" ]; then
-            echo "stale_approval=true" >> "$GITHUB_OUTPUT"
-            echo "No successful AI Code Review exists for the current PR HEAD."
-            echo "The approval is stale. No AI fix will be executed."
-            exit 0
-          fi
-
-          ARTIFACT_NAME="ai-review-${HEAD_SHA}"
-
-          ARTIFACT_ID=$(
-            gh api \
-              --paginate \
-              "repos/$REPOSITORY/actions/runs/$RUN_ID/artifacts?per_page=100" \
-              --jq --arg NAME "$ARTIFACT_NAME" '
-                .artifacts[]
-                | select(.name == $NAME)
-                | select(.expired == false)
-                | .id
+              --workflow "ai-code-review.yml" \
+              --limit 100 \
+              --json "databaseId,headSha,status,conclusion" \
+            | jq -r --arg SHA "$HEAD_SHA" '
+                .[]
+                | select(.headSha == $SHA)
+                | select(.status == "completed")
+                | select(.conclusion == "success")
+                | .databaseId
               ' \
-              | head -n 1
+            | head -n 1
           )
 
-          if [ -z "$ARTIFACT_ID" ]; then
+          if [ -z "$REVIEW_RUN_ID" ]; then
+            echo "No successful AI Code Review found for HEAD $HEAD_SHA."
+
             echo "stale_approval=true" >> "$GITHUB_OUTPUT"
-            echo "The successful review run exists, but its exact artifact is missing or expired."
-            echo "The approval is stale. No AI fix will be executed."
+
             exit 0
           fi
 
-          echo "Found AI Code Review run: $RUN_ID"
-          echo "Found valid review artifact: $ARTIFACT_NAME"
+          echo "Found successful AI Code Review:"
+          echo "Run ID: $REVIEW_RUN_ID"
 
-          {
-            echo "stale_approval=false"
-            echo "run_id=$RUN_ID"
-            echo "artifact_id=$ARTIFACT_ID"
-            echo "artifact_name=$ARTIFACT_NAME"
-          } >> "$GITHUB_OUTPUT"
+          echo "review_run_id=$REVIEW_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "stale_approval=false" >> "$GITHUB_OUTPUT"
+
+      # ================================================================
+      # Report stale approval
+      # ================================================================
 
       - name: Report stale approval
-        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval == 'true'
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true' &&
+          steps.review.outputs.stale_approval == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -186,8 +258,12 @@ jobs:
             --repo "$REPOSITORY" \
             --body-file stale-approval.md
 
-      - name: Report Agent 2 commit
-        if: steps.agent2.outputs.is_agent2_commit == 'true'
+      # ================================================================
+      # Report AI-Code-Fix-agent commit
+      # ================================================================
+
+      - name: Report Fix-Agent commit
+        if: steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -196,27 +272,41 @@ jobs:
         run: |
           set -euo pipefail
 
-          cat > agent2-commit.md <<EOF
+          cat > aI-code-fix-agent-commit.md <<EOF
           ## 🤖 AI Code Fix
 
-          This PR is already at an **Agent 2 fix commit**.
+          This PR is already at a **Fix-Agent fix commit**.
 
           No additional AI fix was executed.
           EOF
 
           gh pr comment "$PR_NUMBER" \
             --repo "$REPOSITORY" \
-            --body-file agent2-commit.md
+            --body-file aI-code-fix-agent-commit.md
+
+      # ================================================================
+      # Checkout exact PR HEAD
+      # ================================================================
 
       - name: Checkout exact PR HEAD
-        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true' &&
+          steps.review.outputs.stale_approval != 'true'
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.pr.outputs.head_sha }}
           fetch-depth: 0
 
+      # ================================================================
+      # Setup PHP
+      # ================================================================
+
       - name: Setup PHP
-        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true' &&
+          steps.review.outputs.stale_approval != 'true'
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
@@ -225,22 +315,87 @@ jobs:
           ini-file: production
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # ================================================================
+      # Dependencies
+      # ================================================================
+
       - name: Install dependencies
-        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true' &&
+          steps.review.outputs.stale_approval != 'true'
         run: composer install --no-interaction --no-progress --prefer-dist
 
-      - name: Download exact review artifact
-        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
-        uses: actions/download-artifact@v5
-        with:
-          name: ${{ steps.review.outputs.artifact_name }}
-          path: ai-review
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: ${{ steps.review.outputs.run_id }}
+      # ================================================================
+      # Download exact AI review artifact
+      # ================================================================
+
+      - name: Download AI review artifact
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true' &&
+          steps.review.outputs.stale_approval != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          REVIEW_RUN_ID: ${{ steps.review.outputs.review_run_id }}
+          ARTIFACT_NAME: ai-review-${{ steps.pr.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Downloading AI review artifact..."
+          echo "Review run ID: $REVIEW_RUN_ID"
+          echo "Artifact: $ARTIFACT_NAME"
+
+          if ! [[ "$REVIEW_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid review run ID: $REVIEW_RUN_ID"
+            exit 1
+          fi
+
+          mkdir -p ai-review
+
+          ARTIFACT_ID=$(
+            gh api \
+              --paginate \
+              "repos/$REPOSITORY/actions/runs/$REVIEW_RUN_ID/artifacts" \
+            | jq -r \
+              --arg NAME "$ARTIFACT_NAME" '
+                .artifacts[]
+                | select(.name == $NAME)
+                | select(.expired == false)
+                | .id
+              ' \
+            | head -n 1
+          )
+
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "::error::Artifact '$ARTIFACT_NAME' was not found in review run $REVIEW_RUN_ID."
+            exit 1
+          fi
+
+          echo "Artifact ID: $ARTIFACT_ID"
+
+          gh api \
+            "repos/$REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            > ai-review/artifact.zip
+
+          unzip -o ai-review/artifact.zip -d ai-review
+
+          rm ai-review/artifact.zip
+
+          echo "Downloaded AI review artifact:"
+          find ai-review -maxdepth 2 -type f -print
+
+      # ================================================================
+      # Validate persisted review
+      # ================================================================
 
       - name: Validate persisted review
-        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true' &&
+          steps.review.outputs.stale_approval != 'true'
         id: validate-review
         env:
           EXPECTED_SHA: ${{ steps.pr.outputs.head_sha }}
@@ -252,12 +407,12 @@ jobs:
           REVIEW_FILE="ai-review/review-result.json"
 
           if [ ! -f "$REVIEW_FILE" ]; then
-            echo "Review artifact is invalid: review-result.json is missing."
+            echo "::error::review-result.json is missing."
             exit 1
           fi
 
           if [ ! -s "$REVIEW_FILE" ]; then
-            echo "Review artifact is invalid: review-result.json is empty."
+            echo "::error::review-result.json is empty."
             exit 1
           fi
 
@@ -269,28 +424,37 @@ jobs:
               JSON_THROW_ON_ERROR
           );
 
+          foreach (["commit_sha", "base_sha", "reviews"] as $field) {
+              if (!array_key_exists($field, $data)) {
+                  fwrite(
+                      STDERR,
+                      "Missing {$field}.\n"
+                  );
+
+                  exit(1);
+              }
+          }
+
           foreach (["commit_sha", "base_sha"] as $field) {
               if (
-                  !isset($data[$field]) ||
                   !is_string($data[$field]) ||
                   $data[$field] === ""
               ) {
                   fwrite(
                       STDERR,
-                      "Missing or invalid {$field}.\n"
+                      "Invalid {$field}.\n"
                   );
+
                   exit(1);
               }
           }
 
-          if (
-              isset($data["findings"]) &&
-              !is_array($data["findings"])
-          ) {
+          if (!is_array($data["reviews"])) {
               fwrite(
                   STDERR,
-                  "Invalid findings structure.\n"
+                  "Invalid reviews structure.\n"
               );
+
               exit(1);
           }
           ' "$REVIEW_FILE"
@@ -298,25 +462,52 @@ jobs:
           REVIEW_SHA=$(jq -r '.commit_sha' "$REVIEW_FILE")
           REVIEW_BASE_SHA=$(jq -r '.base_sha' "$REVIEW_FILE")
 
+          FINDINGS_COUNT=$(
+            jq '[.reviews[]?.findings[]?] | length' "$REVIEW_FILE"
+          )
+
           echo "Expected SHA:      $EXPECTED_SHA"
           echo "Review SHA:        $REVIEW_SHA"
           echo "Expected base SHA: $EXPECTED_BASE_SHA"
           echo "Review base SHA:   $REVIEW_BASE_SHA"
+          echo "Findings:          $FINDINGS_COUNT"
 
           if [ "$REVIEW_SHA" != "$EXPECTED_SHA" ]; then
-            echo "Review result does not belong to the current PR HEAD."
+            echo "::error::Review result does not belong to the current PR HEAD."
             exit 1
           fi
 
           if [ "$REVIEW_BASE_SHA" != "$EXPECTED_BASE_SHA" ]; then
-            echo "Review result does not belong to the current PR BASE."
+            echo "::error::Review result does not belong to the current PR BASE."
             exit 1
           fi
 
-          echo "Review result is valid and bound to the current HEAD and BASE."
+          if [ "$FINDINGS_COUNT" = "0" ]; then
+            echo "::error::The persisted review contains no findings."
+            echo "No AI fix will be executed."
+            exit 1
+          fi
 
-      - name: Run Agent 2
-        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+          echo "findings_count=$FINDINGS_COUNT" >> "$GITHUB_OUTPUT"
+
+          echo "Review result is valid and contains findings."
+
+      # ================================================================
+      # Run Fix-Agent
+      #
+      # IMPORTANT:
+      #
+      # The approval is NOT consumed yet.
+      #
+      # If AI-Code-Fix-agent fails, the same approval remains usable.
+      # ================================================================
+
+      - name: Run Fix-Agent
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true' &&
+          steps.review.outputs.stale_approval != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
@@ -337,28 +528,227 @@ jobs:
             --approved \
             --review-file="ai-review/review-result.json"
 
+      # ================================================================
+      # Remove review artifact
+      # ================================================================
+
       - name: Remove review artifact
-        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
-        run: rm -rf ai-review
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true' &&
+          steps.review.outputs.stale_approval != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
+        run: |
+          rm -rf ai-review
+
+      # ================================================================
+      # Run complete PHPUnit test suite
+      #
+      # IMPORTANT:
+      #
+      # Tests MUST pass before commit/push.
+      # ================================================================
+
+      - name: Run full test suite
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true' &&
+          steps.review.outputs.stale_approval != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Running complete PHPUnit test suite..."
+
+          php ./bin/phpunit tests/ --display-all-issues
+
+          echo
+          echo "All tests passed."
+          echo "AI-Code-Fix-agent is allowed to commit and push."
+
+      # ================================================================
+      # Detect whether AI-Code-Fix-agent actually changed anything
+      # ================================================================
+
+      - name: Detect AI changes
+        id: changes
+        if: >
+          steps.aI-code-fix-agent.outputs.is_aI-code-fix-agent_commit != 'true' &&
+          steps.approval.outputs.already_consumed != 'true' &&
+          steps.review.outputs.stale_approval != 'true' &&
+          steps.validate-review.outputs.findings_count != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+
+            echo "AI-Code-Fix-agent made no changes."
+            echo "No commit will be created."
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+            echo "AI-Code-Fix-agent produced changes:"
+            git status --short
+          fi
+
+      # ================================================================
+      # Commit and push fixes
+      # ================================================================
 
       - name: Commit and push fixes
-        if: steps.agent2.outputs.is_agent2_commit != 'true' && steps.review.outputs.stale_approval != 'true'
+        if: >
+          success() &&
+          steps.changes.outputs.has_changes == 'true'
         env:
           HEAD_REF: ${{ steps.pr.outputs.head_ref }}
         shell: bash
         run: |
           set -euo pipefail
 
-          if git diff --quiet; then
-            echo "No changes were made."
-            exit 0
-          fi
-
           git config user.name "AI Code Fix"
           git config user.email "ai-code-fix@users.noreply.github.com"
 
           git add -A
+
           git commit -m "Apply AI code fixes"
 
           git push origin \
             "HEAD:${HEAD_REF}"
+
+      # ================================================================
+      # Consume approval
+      #
+      # This happens AFTER AI-Code-Fix-agent, PHPUnit and push succeeded.
+      #
+      # Therefore:
+      #
+      #   AI-Code-Fix-agent failure  -> approval remains reusable
+      #   PHPUnit failure  -> approval remains reusable
+      #   Push failure     -> approval remains reusable
+      #   Successful push  -> approval becomes consumed
+      # ================================================================
+
+      - name: Consume approval
+        id: consume
+        if: >
+          success() &&
+          steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MARKER="ai-fix-approval-consumed:${COMMENT_ID}:${HEAD_SHA}"
+
+          cat > approval-consumed.md <<EOF
+          ## 🤖 AI Code Fix
+
+          Approval consumed successfully.
+
+          **Reviewed commit:** \`$HEAD_SHA\`
+
+          **Base SHA:** \`$BASE_SHA\`
+
+          AI-Code-Fix-agent successfully applied the persisted Agent 1 findings and pushed the fix commit.
+
+          <!-- $MARKER -->
+          EOF
+
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file approval-consumed.md
+
+          echo "approval_marked=true" >> "$GITHUB_OUTPUT"
+
+      # ================================================================
+      # Report no changes
+      #
+      # No approval-consumed marker is written.
+      #
+      # This allows the developer to investigate/retry with a new
+      # approval if AI-Code-Fix-agent unexpectedly produced no changes.
+      # ================================================================
+
+      - name: Report no AI changes
+        if: >
+          success() &&
+          steps.changes.outputs.has_changes == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > no-ai-changes.md <<EOF
+          ## 🤖 AI Code Fix
+
+          AI-Code-Fix-agent completed successfully, but no source changes were produced.
+
+          No AI fix commit was created.
+          EOF
+
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body-file no-ai-changes.md
+
+      # ================================================================
+      # Rename PR after AI-Code-Fix-agent push
+      #
+      # PR title:
+      #
+      #   PR-<original developer commit subject>
+      #
+      # This runs only after an actual AI-Code-Fix-agent commit was pushed.
+      # ================================================================
+
+      - name: Rename PR after AI-Code-Fix-agent push
+        if: >
+          success() &&
+          steps.consume.outputs.approval_marked == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+          ORIGINAL_SHA: ${{ steps.pr.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ORIGINAL_COMMIT_SUBJECT=$(
+            gh api \
+              "repos/$REPOSITORY/commits/$ORIGINAL_SHA" \
+              --jq '.commit.message' |
+            head -n 1
+          )
+
+          if [ -z "$ORIGINAL_COMMIT_SUBJECT" ]; then
+            echo "::error::Original commit subject is empty."
+            exit 1
+          fi
+
+          PR_TITLE="PR-$ORIGINAL_COMMIT_SUBJECT"
+
+          echo "Original commit subject:"
+          echo "$ORIGINAL_COMMIT_SUBJECT"
+
+          echo
+          echo "New PR title:"
+          echo "$PR_TITLE"
+
+          gh pr edit "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --title "$PR_TITLE"

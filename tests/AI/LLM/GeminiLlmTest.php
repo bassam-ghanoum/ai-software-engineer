@@ -294,4 +294,77 @@ final class GeminiLlmTest extends TestCase
 
         $llm->generate('Test prompt');
     }
+
+
+    public function testGenerateJsonNormalizesInvalidEscapedDollarSign(): void
+    {
+        $response = $this->createStub(ResponseInterface::class);
+
+        $response
+            ->method('getStatusCode')
+            ->willReturn(200);
+
+        $response
+            ->method('toArray')
+            ->willReturn([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                [
+                                    'text' => <<<'JSON'
+    {
+    "findings": [
+        {
+        "line": 13,
+        "severity": "medium",
+        "category": "error_handling",
+        "message": "Check the \$exitCode and throw a custom exception."
+        }
+    ]
+    }
+    JSON,
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $httpClient = $this->createMock(HttpClientInterface::class);
+
+        $httpClient
+            ->expects(self::once())
+            ->method('request')
+            ->willReturn($response);
+
+        $llm = new GeminiLlm(
+            $httpClient,
+            'test-api-key',
+            'gemini-2.5-flash',
+            0,
+        );
+
+        $result = $llm->generateJson('Test prompt');
+
+        self::assertSame(
+            <<<'JSON'
+    {
+    "findings": [
+        {
+        "line": 13,
+        "severity": "medium",
+        "category": "error_handling",
+        "message": "Check the $exitCode and throw a custom exception."
+        }
+    ]
+    }
+    JSON,
+            $result,
+        );
+
+        self::assertNotNull(json_decode($result, true));
+        self::assertSame(JSON_ERROR_NONE, json_last_error());
+    }
+
 }

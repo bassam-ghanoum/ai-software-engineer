@@ -12,5 +12,6 @@ interface FixAgentInterface
         string $filePath,
         string $sourceCode,
         ReviewResult $reviewResult,
+        ?string $previousFailure = null,
     ): string;
 }

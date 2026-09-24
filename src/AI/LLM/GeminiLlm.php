@@ -54,7 +54,9 @@ final class GeminiLlm implements LlmInterface
             ],
         ]);
 
-        return $this->extractText($data);
+        return $this->normalizeJsonResponse(
+            $this->extractText($data),
+        );
     }
 
     /**
@@ -86,7 +88,10 @@ final class GeminiLlm implements LlmInterface
 
                 $statusCode = $response->getStatusCode();
 
-                if ($this->shouldRetry($statusCode) && $attempt < self::MAX_RETRIES) {
+                if (
+                    $this->shouldRetry($statusCode)
+                    && $attempt < self::MAX_RETRIES
+                ) {
                     $this->waitBeforeRetry($attempt);
 
                     continue;
@@ -98,7 +103,10 @@ final class GeminiLlm implements LlmInterface
                     throw new RuntimeException(sprintf(
                         'Gemini API request failed with HTTP %d: %s',
                         $statusCode,
-                        json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+                        json_encode(
+                            $data,
+                            JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+                        ),
                     ));
                 }
 
@@ -112,7 +120,9 @@ final class GeminiLlm implements LlmInterface
             }
         }
 
-        throw new RuntimeException('Gemini API request failed after all retry attempts.');
+        throw new RuntimeException(
+            'Gemini API request failed after all retry attempts.',
+        );
     }
 
     /**
@@ -128,8 +138,24 @@ final class GeminiLlm implements LlmInterface
 
         throw new RuntimeException(sprintf(
             'Gemini returned no text content. Response: %s',
-            json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+            json_encode(
+                $data,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
+            ),
         ));
+    }
+
+    private function normalizeJsonResponse(string $response): string
+    {
+        /*
+         * Gemini can occasionally return invalid JSON by escaping a PHP
+         * variable marker as "\$".
+         *
+         * "\$" is not a valid JSON escape sequence. "$" itself does not
+         * require escaping inside a JSON string, so normalize only this
+         * specific malformed escape sequence.
+         */
+        return str_replace('\$', '$', $response);
     }
 
     private function shouldRetry(int $statusCode): bool
