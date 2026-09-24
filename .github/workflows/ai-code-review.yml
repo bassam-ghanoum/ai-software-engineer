@@ -186,6 +186,7 @@ jobs:
         if: steps.ai-code-fix-agent.outputs.is_ai-code-fix-agent_commit != 'true'
         env:
           GH_TOKEN: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
+          AI_REVIEW_TOKEN_CHECK: ${{ secrets.AI_REVIEW_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
@@ -194,6 +195,13 @@ jobs:
 
           OWNER="${REPOSITORY%%/*}"
           NAME="${REPOSITORY##*/}"
+
+          if [ -n "$AI_REVIEW_TOKEN_CHECK" ]; then
+            echo "AI_REVIEW_TOKEN is available to this run"
+          else
+            echo "Using GITHUB_TOKEN fallback"
+          fi
+          gh api user --jq .login
 
           if ! gh api graphql --paginate --slurp \
             -f query='query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
