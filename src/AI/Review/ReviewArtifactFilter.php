@@ -33,12 +33,12 @@ final class ReviewArtifactFilter
 
         $removed = 0;
 
-        foreach ($data['reviews'] as $filePath => &$review) {
+        foreach ($data['reviews'] as $filePath => $review) {
             if (!is_array($review) || !isset($review['findings']) || !is_array($review['findings'])) {
                 continue;
             }
 
-            $review['findings'] = array_values(array_filter(
+            $data['reviews'][$filePath]['findings'] = array_values(array_filter(
                 $review['findings'],
                 function (mixed $finding) use (
                     $filePath,
@@ -61,7 +61,6 @@ final class ReviewArtifactFilter
                 },
             ));
         }
-        unset($review);
 
         try {
             $filteredJson = json_encode(

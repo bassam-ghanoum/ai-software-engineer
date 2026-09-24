@@ -40,7 +40,9 @@ final class ReviewArtifactValidatorTest extends TestCase
 
             self::assertSame(1, $findingsCount);
         } finally {
-            unlink($file);
+            if (file_exists($file)) {
+                unlink($file);
+            }
         }
     }
 
@@ -66,7 +68,9 @@ final class ReviewArtifactValidatorTest extends TestCase
                 'BASE_SHA',
             );
         } finally {
-            unlink($file);
+            if (file_exists($file)) {
+                unlink($file);
+            }
         }
     }
 

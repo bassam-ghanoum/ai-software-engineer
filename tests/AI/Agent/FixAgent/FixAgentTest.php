@@ -206,11 +206,12 @@ PHP;
             ]),
         );
     }
-public function testReturnsExactlyTheSourceReturnedByLlm(): void
-{
-    $llm = $this->createMock(LlmInterface::class);
 
-    $fixedSource = <<<'PHP'
+    public function testReturnsExactlyTheSourceReturnedByLlm(): void
+    {
+        $llm = $this->createMock(LlmInterface::class);
+
+        $fixedSource = <<<'PHP'
 <?php
 
 function example(): string
@@ -219,31 +220,30 @@ function example(): string
 }
 PHP;
 
-    $llm
-        ->expects(self::once())
-        ->method('generate')
-        ->willReturn($fixedSource);
+        $llm
+            ->expects(self::once())
+            ->method('generate')
+            ->willReturn($fixedSource);
 
-    $agent = new FixAgent($llm);
+        $agent = new FixAgent($llm);
 
-    $result = $agent->fix(
-        'test.php',
-        '<?php echo "Original";',
-        new ReviewResult([
-            new ReviewFinding(
-                1,
-                'high',
-                'bug',
-                'Example issue',
-                'Fix the issue',
-            ),
-        ]),
-    );
+        $result = $agent->fix(
+            'test.php',
+            '<?php echo "Original";',
+            new ReviewResult([
+                new ReviewFinding(
+                    1,
+                    'high',
+                    'bug',
+                    'Example issue',
+                    'Fix the issue',
+                ),
+            ]),
+        );
 
-    self::assertSame(
-        $fixedSource . PHP_EOL,
-        $result,
-    );
-}
-
+        self::assertSame(
+            $fixedSource . PHP_EOL,
+            $result,
+        );
+    }
 }
