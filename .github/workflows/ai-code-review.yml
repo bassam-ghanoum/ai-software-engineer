@@ -179,6 +179,76 @@ jobs:
           echo "Review result is correctly bound to the current PR HEAD and BASE."
 
       # ================================================================
+      # Resolve findings from earlier AI review runs
+      # ================================================================
+
+      - name: Resolve previous AI review threads
+        if: steps.ai-code-fix-agent.outputs.is_ai-code-fix-agent_commit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OWNER="${REPOSITORY%%/*}"
+          NAME="${REPOSITORY##*/}"
+
+          gh api graphql --paginate --slurp \
+            -f query='query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
+              repository(owner:$owner, name:$name) {
+                pullRequest(number:$number) {
+                  reviewThreads(first:100, after:$endCursor) {
+                    nodes {
+                      id
+                      isResolved
+                      comments(first:100) { nodes { body } }
+                    }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+              }
+            }' \
+            -f owner="$OWNER" \
+            -f name="$NAME" \
+            -F number="$PR_NUMBER" \
+            > review-threads.json
+
+          AI_THREAD_IDS=$(jq -r '
+            .[].data.repository.pullRequest.reviewThreads.nodes[]
+            | select(.isResolved == false)
+            | select(
+                [
+                  .comments.nodes[]?.body // ""
+                  | test("ai-code-review-fingerprint:[a-f0-9]{64}")
+                ] | any
+              )
+            | .id
+          ' review-threads.json)
+
+          RESOLVED=0
+
+          while IFS= read -r THREAD_ID; do
+            [ -z "$THREAD_ID" ] && continue
+
+            gh api graphql \
+              -f query='mutation($threadId:ID!) {
+                resolveReviewThread(input:{threadId:$threadId}) {
+                  thread { isResolved }
+                }
+              }' \
+              -f threadId="$THREAD_ID" \
+              > /dev/null
+
+            RESOLVED=$((RESOLVED + 1))
+          done <<< "$AI_THREAD_IDS"
+
+          rm -f review-threads.json
+
+          echo "Resolved previous AI review threads: $RESOLVED"
+
+      # ================================================================
       # No findings
       #
       # A finding-free review must never enter the approval/fix loop.
