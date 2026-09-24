@@ -197,11 +197,17 @@ A failed attempt is not written to the source file.
 
 The developer remains in control of applying AI-generated fixes.
 
-For GitHub Pull Requests, approval is provided by commenting:
+For GitHub Pull Requests, the fix workflow runs only after the Pull Request
+author comments this exact command on the Pull Request:
 
 ```text
 @ai-fix approve
 ```
+
+Simply reviewing or resolving a finding does not run the fix workflow. Before
+approving, resolve any review comment that should no longer be fixed. Resolved
+AI review threads are ignored by AI-Code-Fix-Agent, so only unresolved findings
+are passed to the fixer.
 
 The approval is processed only when it comes from the Pull Request author.
 

@@ -398,6 +398,9 @@ jobs:
           steps.review.outputs.stale_approval != 'true'
         id: validate-review
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
           EXPECTED_SHA: ${{ steps.pr.outputs.head_sha }}
           EXPECTED_BASE_SHA: ${{ steps.pr.outputs.base_sha }}
         shell: bash
@@ -416,17 +419,57 @@ jobs:
             exit 1
           fi
 
-            php bin/console ai:review:validate-result \
+          OWNER="${REPOSITORY%%/*}"
+          NAME="${REPOSITORY##*/}"
+
+          gh api graphql --paginate --slurp \
+            -f query='query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
+              repository(owner:$owner, name:$name) {
+                pullRequest(number:$number) {
+                  reviewThreads(first:100, after:$endCursor) {
+                    nodes {
+                      isResolved
+                      comments(first:100) { nodes { body } }
+                    }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+              }
+            }' \
+            -f owner="$OWNER" \
+            -f name="$NAME" \
+            -F number="$PR_NUMBER" \
+            > review-threads.json
+
+          jq -r '
+            .[].data.repository.pullRequest.reviewThreads.nodes[]
+            | select(.isResolved == true)
+            | .comments.nodes[]?.body // ""
+            | scan("ai-code-review-fingerprint:[a-f0-9]{64}")
+            | sub("ai-code-review-fingerprint:"; "")
+          ' review-threads.json \
+            | jq -R -s 'split("\n") | map(select(length > 0)) | unique' \
+            > resolved-fingerprints.json
+
+          php bin/console ai:review:filter-resolved \
+            "$REVIEW_FILE" \
+            resolved-fingerprints.json
+
+          FINDINGS_COUNT=$(jq '[.reviews[]?.findings[]?] | length' "$REVIEW_FILE")
+
+          if [ "$FINDINGS_COUNT" = "0" ]; then
+            echo "findings_count=0" >> "$GITHUB_OUTPUT"
+            echo "All persisted review findings were already resolved. No AI fix is required."
+            exit 0
+          fi
+
+          php bin/console ai:review:validate-result \
             "$REVIEW_FILE" \
             --commit-sha="$EXPECTED_SHA" \
             --base-sha="$EXPECTED_BASE_SHA"
 
           REVIEW_SHA=$(jq -r '.commit_sha' "$REVIEW_FILE")
           REVIEW_BASE_SHA=$(jq -r '.base_sha' "$REVIEW_FILE")
-
-          FINDINGS_COUNT=$(
-            jq '[.reviews[]?.findings[]?] | length' "$REVIEW_FILE"
-          )
 
           echo "Expected SHA:      $EXPECTED_SHA"
           echo "Review SHA:        $REVIEW_SHA"
