@@ -52,13 +52,20 @@ final class ValidateReviewResultCommand extends Command
         OutputInterface $output,
     ): int {
         $file = (string) $input->getArgument('file');
-        $expectedCommitSha = (string) $input->getOption('commit-sha');
-        $expectedBaseSha = (string) $input->getOption('base-sha');
-        $findingsCount = $this->validator->validate(
-            $file,
-            $expectedCommitSha,
-            $expectedBaseSha,
-        );
+        $commitShaOption = $input->getOption('commit-sha');
+        $expectedCommitSha = $commitShaOption !== null ? (string) $commitShaOption : null;
+        $baseShaOption = $input->getOption('base-sha');
+        $expectedBaseSha = $baseShaOption !== null ? (string) $baseShaOption : null;
+        try {
+            $findingsCount = $this->validator->validate(
+                $file,
+                $expectedCommitSha,
+                $expectedBaseSha,
+            );
+        } catch (\Throwable $e) {
+            $output->writeln(sprintf('<error>%s</error>', $e->getMessage()));
+            return Command::FAILURE;
+        }
 
         $output->writeln('<info>Review result is valid.</info>');
         $output->writeln(sprintf(
