@@ -21,7 +21,6 @@ final class FixAgentTest extends TestCase
             ->method('generate');
 
         $agent = new FixAgent($llm);
-
         $sourceCode = <<<'PHP'
 <?php
 
