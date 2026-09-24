@@ -267,7 +267,8 @@ jobs:
 
           echo "Changed PHP diff:"
           cat changed-lines.diff
-            php bin/console ai:review:prepare-comments \
+
+          php bin/console ai:review:prepare-comments \
             review-result.json \
             changed-lines.diff \
             --changed-lines-output=changed-lines.json \

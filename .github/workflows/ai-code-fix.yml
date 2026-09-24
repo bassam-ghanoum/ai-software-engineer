@@ -416,48 +416,10 @@ jobs:
             exit 1
           fi
 
-          php -r '
-          $data = json_decode(
-              file_get_contents($argv[1]),
-              true,
-              512,
-              JSON_THROW_ON_ERROR
-          );
-
-          foreach (["commit_sha", "base_sha", "reviews"] as $field) {
-              if (!array_key_exists($field, $data)) {
-                  fwrite(
-                      STDERR,
-                      "Missing {$field}.\n"
-                  );
-
-                  exit(1);
-              }
-          }
-
-          foreach (["commit_sha", "base_sha"] as $field) {
-              if (
-                  !is_string($data[$field]) ||
-                  $data[$field] === ""
-              ) {
-                  fwrite(
-                      STDERR,
-                      "Invalid {$field}.\n"
-                  );
-
-                  exit(1);
-              }
-          }
-
-          if (!is_array($data["reviews"])) {
-              fwrite(
-                  STDERR,
-                  "Invalid reviews structure.\n"
-              );
-
-              exit(1);
-          }
-          ' "$REVIEW_FILE"
+            php bin/console ai:review:validate-result \
+            "$REVIEW_FILE" \
+            --commit-sha="$EXPECTED_SHA" \
+            --base-sha="$EXPECTED_BASE_SHA"
 
           REVIEW_SHA=$(jq -r '.commit_sha' "$REVIEW_FILE")
           REVIEW_BASE_SHA=$(jq -r '.base_sha' "$REVIEW_FILE")
@@ -479,12 +441,6 @@ jobs:
 
           if [ "$REVIEW_BASE_SHA" != "$EXPECTED_BASE_SHA" ]; then
             echo "::error::Review result does not belong to the current PR BASE."
-            exit 1
-          fi
-
-          if [ "$FINDINGS_COUNT" = "0" ]; then
-            echo "::error::The persisted review contains no findings."
-            echo "No AI fix will be executed."
             exit 1
           fi
 
