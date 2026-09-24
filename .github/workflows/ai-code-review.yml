@@ -185,7 +185,7 @@ jobs:
       - name: Resolve previous AI review threads
         if: steps.ai-code-fix-agent.outputs.is_ai-code-fix-agent_commit != 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
@@ -195,7 +195,7 @@ jobs:
           OWNER="${REPOSITORY%%/*}"
           NAME="${REPOSITORY##*/}"
 
-          gh api graphql --paginate --slurp \
+          if ! gh api graphql --paginate --slurp \
             -f query='query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
               repository(owner:$owner, name:$name) {
                 pullRequest(number:$number) {
@@ -213,7 +213,11 @@ jobs:
             -f owner="$OWNER" \
             -f name="$NAME" \
             -F number="$PR_NUMBER" \
-            > review-threads.json
+            > review-threads.json; then
+            echo "::warning::Unable to read AI review threads with the configured GitHub token."
+            echo "::warning::Set the AI_REVIEW_TOKEN repository secret to a maintainer token with pull-request write access."
+            exit 0
+          fi
 
           AI_THREAD_IDS=$(jq -r '
             .[].data.repository.pullRequest.reviewThreads.nodes[]
@@ -232,14 +236,18 @@ jobs:
           while IFS= read -r THREAD_ID; do
             [ -z "$THREAD_ID" ] && continue
 
-            gh api graphql \
+            if ! gh api graphql \
               -f query='mutation($threadId:ID!) {
                 resolveReviewThread(input:{threadId:$threadId}) {
                   thread { isResolved }
                 }
               }' \
               -f threadId="$THREAD_ID" \
-              > /dev/null
+              > /dev/null; then
+              echo "::warning::Unable to resolve AI review thread $THREAD_ID with the configured GitHub token."
+              echo "::warning::Set the AI_REVIEW_TOKEN repository secret to a maintainer token with pull-request write access."
+              continue
+            fi
 
             RESOLVED=$((RESOLVED + 1))
           done <<< "$AI_THREAD_IDS"

@@ -248,6 +248,12 @@ The workflow:
 
 Review findings are displayed as GitHub Pull Request comments, including inline findings where the changed line can be identified.
 
+The review workflow resolves previous AI inline review threads before posting
+the findings for a new commit. If GitHub reports that the workflow token is not
+allowed to resolve threads, configure the optional `AI_REVIEW_TOKEN` repository
+secret with a maintainer token that has pull-request write access. The review
+itself can still complete when thread resolution is unavailable.
+
 ---
 
 # Review SHA Protection
