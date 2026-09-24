@@ -118,6 +118,8 @@ The standard commands are:
 
 ```bash
 docker exec agents_system php bin/console ai:review
+docker exec agents_system php bin/console ai:review:bind-result review-result.json --commit-sha=HEAD_SHA --base-sha=BASE_SHA
+docker exec agents_system php bin/console ai:review:prepare-comments review-result.json changed-lines.diff
 docker exec agents_system php bin/console ai:fix HEAD~1 HEAD
 docker exec agents_system php ./bin/phpunit tests/ --display-all-issues
 docker exec agents_system php bin/console lint:container
