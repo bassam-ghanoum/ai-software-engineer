@@ -624,6 +624,75 @@ jobs:
             "HEAD:${HEAD_REF}"
 
       # ================================================================
+      # Resolve AI review threads after the fix commit is pushed
+      # ================================================================
+
+      - name: Resolve AI review threads
+        if: >
+          success() &&
+          steps.changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AI_REVIEW_TOKEN || secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap 'rm -f unresolved-ai-thread-ids.txt' EXIT
+
+          OWNER="${REPOSITORY%%/*}"
+          NAME="${REPOSITORY##*/}"
+
+          gh api graphql --paginate --slurp \
+            -f query='query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
+              repository(owner:$owner, name:$name) {
+                pullRequest(number:$number) {
+                  reviewThreads(first:100, after:$endCursor) {
+                    nodes {
+                      id
+                      isResolved
+                      comments(first:100) { nodes { body } }
+                    }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+              }
+            }' \
+            -f owner="$OWNER" \
+            -f name="$NAME" \
+            -F number="$PR_NUMBER" \
+            | jq -r '
+              .[].data.repository.pullRequest.reviewThreads.nodes[]
+              | select(.isResolved == false)
+              | select(
+                  [
+                    .comments.nodes[]?.body // ""
+                    | test("ai-code-review-fingerprint:[a-f0-9]{64}")
+                  ] | any
+                )
+              | .id
+            ' > unresolved-ai-thread-ids.txt
+
+          RESOLVED=0
+
+          while IFS= read -r THREAD_ID; do
+            [ -z "$THREAD_ID" ] && continue
+
+            gh api graphql \
+              -f query='mutation($threadId:ID!) {
+                resolveReviewThread(input:{threadId:$threadId}) {
+                  thread { isResolved }
+                }
+              }' \
+              -f threadId="$THREAD_ID" \
+              > /dev/null
+
+            RESOLVED=$((RESOLVED + 1))
+          done < unresolved-ai-thread-ids.txt
+
+          echo "Resolved AI review threads after fix push: $RESOLVED"
+
+      # ================================================================
       # Consume approval
       #
       # This happens AFTER AI-Code-Fix-agent, PHPUnit and push succeeded.

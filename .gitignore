@@ -10,6 +10,7 @@
 /review-threads.json
 /review-result.json
 /review-*.json
+/unresolved-ai-thread-ids.txt
 /no-findings.md
 /no-ai-changes.md
 /approval-consumed.md
