@@ -19,6 +19,14 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
         string $filePath,
         string $code,
     ): ReviewResult {
+        if (trim($filePath) === '') {
+            throw new \InvalidArgumentException('The file path cannot be empty.');
+        }
+
+        if ($code === '') {
+            throw new \InvalidArgumentException('The code cannot be empty.');
+        }
+
         $prompt = <<<PROMPT
 You are a senior PHP code reviewer.
 
