@@ -455,6 +455,8 @@ jobs:
             "$REVIEW_FILE" \
             resolved-fingerprints.json
 
+          rm -f review-threads.json resolved-fingerprints.json
+
           FINDINGS_COUNT=$(jq '[.reviews[]?.findings[]?] | length' "$REVIEW_FILE")
 
           if [ "$FINDINGS_COUNT" = "0" ]; then
@@ -539,6 +541,7 @@ jobs:
           steps.validate-review.outputs.findings_count != '0'
         run: |
           rm -rf ai-review
+          rm -f pr.json
 
       # ================================================================
       # Run complete PHPUnit test suite

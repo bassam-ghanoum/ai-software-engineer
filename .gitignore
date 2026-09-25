@@ -1,4 +1,22 @@
-﻿# ============================================
+﻿# AI review workflow runtime artifacts
+
+/ai-review/
+/ai-review.txt
+/changed-lines.json
+/existing-fingerprints.txt
+/existing-*.json
+/pr.json
+/resolved-fingerprints.json
+/review-threads.json
+/review-result.json
+/review-*.json
+/no-findings.md
+/no-ai-changes.md
+/approval-consumed.md
+/consumed-approval.md
+/stale-approval.md
+/aI-code-fix-agent-commit.md
+# ============================================
 # Symfony
 # ============================================
 
