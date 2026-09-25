@@ -26,6 +26,20 @@ final class CodeReviewAgentContainerTest extends KernelTestCase
         );
     }
 
+    public function testCodeReviewAgentInterfaceUsesCodeReviewAgentImplementation(): void
+    {
+        self::bootKernel([
+            'environment' => 'test',
+            'debug' => true,
+        ]);
+
+        $agent = self::getContainer()->get(
+            \App\AI\Agent\CodeReviewAgentInterface::class
+        );
+
+        self::assertInstanceOf(CodeReviewAgent::class, $agent);
+    }
+
     public function testLlmInterfaceUsesGeminiImplementation(): void
     {
         self::bootKernel([

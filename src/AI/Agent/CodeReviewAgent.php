@@ -101,13 +101,16 @@ PROMPT;
         }
 
         if (
-            !isset($data['findings'])
+            !is_array($data)
+            || !array_key_exists('findings', $data)
             || !is_array($data['findings'])
         ) {
             throw new \RuntimeException(
                 'The LLM JSON response does not contain a valid findings array.',
             );
         }
+
+        $lineCount = count(preg_split('/\R/', $code));
 
         $findings = [];
 
@@ -140,6 +143,7 @@ PROMPT;
             if (
                 !is_int($finding['line'])
                 || $finding['line'] < 1
+                || $finding['line'] > $lineCount
             ) {
                 throw new \RuntimeException(
                     'Review finding field "line" is missing or invalid.',

@@ -42,7 +42,7 @@ final class CodeReviewAgentTest extends TestCase
 
         $result = $agent->review(
             'test.php',
-            '<?php echo "Hello World";'
+            "<?php\n\n\n\n\necho \"Hello World\";\n\n\n\n\n\n"
         );
 
         self::assertCount(2, $result->getFindings());
@@ -116,6 +116,60 @@ final class CodeReviewAgentTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
             'The LLM JSON response does not contain a valid findings array.'
+        );
+
+        $agent->review(
+            'test.php',
+            '<?php echo "Hello World";'
+        );
+    }
+
+    public function testItRejectsJsonWithoutAnObjectRoot(): void
+    {
+        $llm = $this->createStub(LlmInterface::class);
+
+        $llm
+            ->method('generateJson')
+            ->willReturn('null');
+
+        $agent = new CodeReviewAgent($llm);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(
+            'The LLM JSON response does not contain a valid findings array.'
+        );
+
+        $agent->review(
+            'test.php',
+            '<?php echo "Hello World";'
+        );
+    }
+
+    public function testItRejectsFindingOutsideSourceLineRange(): void
+    {
+        $llm = $this->createStub(LlmInterface::class);
+
+        $llm
+            ->method('generateJson')
+            ->willReturn(
+                json_encode([
+                    'findings' => [
+                        [
+                            'line' => 2,
+                            'severity' => 'low',
+                            'category' => 'maintainability',
+                            'message' => 'The line does not exist.',
+                            'suggestion' => 'Use a valid source line.',
+                        ],
+                    ],
+                ], JSON_THROW_ON_ERROR)
+            );
+
+        $agent = new CodeReviewAgent($llm);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Review finding field "line" is missing or invalid.'
         );
 
         $agent->review(
@@ -264,7 +318,7 @@ final class CodeReviewAgentTest extends TestCase
                 json_encode([
                     'findings' => [
                         [
-                            'line' => 5,
+                            'line' => 1,
                             'severity' => 'unknown',
                             'category' => 'security',
                             'message' => 'Something is wrong.',
