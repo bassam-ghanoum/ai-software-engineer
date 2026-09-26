@@ -128,9 +128,17 @@ Rules:
 5. Reject changes to return values or behavior unless required by the review findings.
 6. Preserve unrelated functionality exactly.
 7. If uncertain, reject the fix.
-8. Return ONLY valid JSON.
-9. Do not wrap the JSON in Markdown code fences.
-10. The JSON must have exactly this structure:
+8. Reject test changes that alter existing expectations or mocked interactions
+    unless an approved finding specifically identifies a defect in that test.
+    Reject test changes that assume a mocked dependency is invoked when the
+    supplied source does not show that interaction.
+9. Reject broad exception handling that hides failures or substitutes empty or
+    successful results unless an approved finding explicitly requires it.
+10. Reject superficial security checks, such as a command-prefix or regex check,
+     when the same untrusted input is still passed to a shell or unsafe boundary.
+11. Return ONLY valid JSON.
+12. Do not wrap the JSON in Markdown code fences.
+13. The JSON must have exactly this structure:
 {
   "approved": true,
   "reason": "short explanation"

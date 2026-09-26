@@ -99,6 +99,26 @@ PHP;
                     );
 
                     self::assertStringContainsString(
+                        'Change tests only when an approved finding specifically identifies a defect',
+                        $prompt,
+                    );
+
+                    self::assertStringContainsString(
+                        'Do NOT make a test expect a dependency interaction unless the code shown',
+                        $prompt,
+                    );
+
+                    self::assertStringContainsString(
+                        'Do NOT catch broad exceptions or replace failures with empty/default-success',
+                        $prompt,
+                    );
+
+                    self::assertStringContainsString(
+                        'Do NOT add a superficial prefix or regex check',
+                        $prompt,
+                    );
+
+                    self::assertStringContainsString(
                         'test.php',
                         $prompt,
                     );

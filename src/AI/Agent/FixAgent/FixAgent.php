@@ -136,11 +136,31 @@ STRICT EDITING RULES:
 13. Preserve the original comments, blank lines, formatting, and code structure
     wherever they are not directly affected by an approved finding.
 
-14. Return the COMPLETE corrected source code.
+14. Change tests only when an approved finding specifically identifies a defect
+    in the test file currently being fixed.
 
-15. Do NOT return Markdown code fences.
+15. When changing a test, preserve the behavior and contract it is intended to
+    verify. Do NOT alter expectations or add mock expectations just to match an
+    unrelated production-code change or an assumption not shown in the source.
+    Do NOT make a test expect a dependency interaction unless the code shown
+    actually invokes that dependency on the tested path. If that cannot be
+    verified from this file, do not make that test change.
 
-16. Do NOT return explanations.
+16. Do NOT catch broad exceptions or replace failures with empty/default-success
+    results unless an approved finding explicitly requires that behavior.
+
+17. For security findings, fix the underlying security boundary. Do NOT add a
+    superficial prefix or regex check while still passing the same untrusted
+    input to a shell or other unsafe execution boundary.
+
+18. Do NOT claim or imply that tests pass; tests are run separately by the
+    workflow.
+
+19. Return the COMPLETE corrected source code.
+
+20. Do NOT return Markdown code fences.
+21. Do NOT return explanations.
+22. Do NOT return a diff.
 
 17. Do NOT return a diff.
 

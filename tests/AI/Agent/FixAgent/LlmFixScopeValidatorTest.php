@@ -130,7 +130,11 @@ final class LlmFixScopeValidatorTest extends TestCase
                     return str_contains($prompt, 'fixtures/test.php')
                         && str_contains($prompt, '<?php echo *"Hello";')
                         && str_contains($prompt, '<?php echo "Hello";')
-                        && str_contains($prompt, 'Remove the * operator.');
+                        && str_contains($prompt, 'Remove the * operator.')
+                        && str_contains($prompt, 'Reject test changes that alter existing expectations')
+                        && str_contains($prompt, 'Reject test changes that assume a mocked dependency is invoked')
+                        && str_contains($prompt, 'Reject broad exception handling that hides failures')
+                        && str_contains($prompt, 'Reject superficial security checks');
                 }
             ))
             ->willReturn(json_encode([
