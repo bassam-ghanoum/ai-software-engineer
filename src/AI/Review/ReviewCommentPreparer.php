@@ -6,6 +6,8 @@ namespace App\AI\Review;
 
 final class ReviewCommentPreparer
 {
+    private const MAX_INLINE_LINE_DISTANCE = 3;
+
     public function __construct(
         private readonly ReviewResultSerializer $serializer,
         private readonly ChangedLinesParser $changedLinesParser,
@@ -30,8 +32,13 @@ final class ReviewCommentPreparer
 
         foreach ($result['reviews'] as $file => $review) {
             $path = ltrim($file, '/');
+            $fileChangedLines = $changedLines[$path] ?? [];
 
             foreach ($review->getFindings() as $finding) {
+                $inlineLine = $this->findInlineLine(
+                    $fileChangedLines,
+                    $finding->getLine(),
+                );
                 $fingerprint = $this->fingerprint(
                     $path,
                     $finding->getCategory(),
@@ -42,7 +49,7 @@ final class ReviewCommentPreparer
                 $comment = [
                     'fingerprint' => $fingerprint,
                     'path' => $path,
-                    'line' => $finding->getLine(),
+                    'line' => $inlineLine ?? $finding->getLine(),
                     'side' => 'RIGHT',
                     'body' => $this->buildBody(
                         $fingerprint,
@@ -50,10 +57,7 @@ final class ReviewCommentPreparer
                     ),
                 ];
 
-                if (
-                    isset($changedLines[$path])
-                    && isset($changedLines[$path][$finding->getLine()])
-                ) {
+                if ($inlineLine !== null) {
                     $inline[] = $comment;
                     continue;
                 }
@@ -67,6 +71,32 @@ final class ReviewCommentPreparer
             'inline' => $inline,
             'general' => $general,
         ];
+    }
+
+    /**
+     * @param array<int, bool> $changedLines
+     */
+    private function findInlineLine(array $changedLines, int $findingLine): ?int
+    {
+        if (isset($changedLines[$findingLine])) {
+            return $findingLine;
+        }
+
+        $nearestLine = null;
+        $nearestDistance = self::MAX_INLINE_LINE_DISTANCE + 1;
+
+        foreach ($changedLines as $line => $_) {
+            $distance = abs($line - $findingLine);
+
+            if ($distance < $nearestDistance) {
+                $nearestLine = $line;
+                $nearestDistance = $distance;
+            }
+        }
+
+        return $nearestDistance <= self::MAX_INLINE_LINE_DISTANCE
+            ? $nearestLine
+            : null;
     }
 
     private function fingerprint(
