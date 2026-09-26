@@ -21,14 +21,15 @@ final class PhpSourceValidator implements SourceValidatorInterface
         try {
             $result = file_put_contents($temporaryFile, $sourceCode);
 
-            if ($result === false) {
+            if ($result !== strlen($sourceCode)) {
                 throw new RuntimeException(
                     'Unable to write temporary file for PHP validation.'
                 );
             }
 
             $command = sprintf(
-                'php -l %s 2>&1',
+                '%s -l %s 2>&1',
+                escapeshellarg(PHP_BINARY),
                 escapeshellarg($temporaryFile),
             );
 

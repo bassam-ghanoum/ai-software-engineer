@@ -69,6 +69,58 @@ final class LocalSourceFileProviderTest extends TestCase
         );
     }
 
+    public function testWriteReplacesExistingFileContent(): void
+    {
+        $provider = new LocalSourceFileProvider();
+
+        $filePath = $this->temporaryDirectory . '/test.php';
+        file_put_contents($filePath, '<?php echo "Original";');
+
+        $provider->write($filePath, '<?php echo "Fixed";');
+
+        self::assertSame(
+            '<?php echo "Fixed";',
+            file_get_contents($filePath),
+        );
+    }
+
+    public function testWriteCreatesMissingParentDirectories(): void
+    {
+        $provider = new LocalSourceFileProvider();
+        $filePath = $this->temporaryDirectory . '/nested/test.php';
+
+        $provider->write($filePath, '<?php echo "Fixed";');
+
+        self::assertSame(
+            '<?php echo "Fixed";',
+            file_get_contents($filePath),
+        );
+    }
+
+    public function testWriteUpdatesTargetOfExistingSymlink(): void
+    {
+        if (PHP_OS_FAMILY === 'Windows') {
+            self::markTestSkipped('Symlink behavior is tested on Unix systems.');
+        }
+
+        $provider = new LocalSourceFileProvider();
+        $targetPath = $this->temporaryDirectory . '/target.php';
+        $linkPath = $this->temporaryDirectory . '/link.php';
+        file_put_contents($targetPath, '<?php echo "Original";');
+
+        if (!symlink($targetPath, $linkPath)) {
+            self::markTestSkipped('Unable to create a test symlink.');
+        }
+
+        $provider->write($linkPath, '<?php echo "Fixed";');
+
+        self::assertTrue(is_link($linkPath));
+        self::assertSame(
+            '<?php echo "Fixed";',
+            file_get_contents($targetPath),
+        );
+    }
+
     public function testExistsReturnsTrueForExistingFile(): void
     {
         $provider = new LocalSourceFileProvider();
