@@ -37,35 +37,25 @@ final class ReviewArtifactFilter
             );
         }
 
+        $validatedReviews = $this->serializer->deserialize($json)['reviews'];
         $removed = 0;
 
-        foreach ($data['reviews'] as $filePath => $review) {
-            if (!is_array($review) || !isset($review['findings']) || !is_array($review['findings'])) {
-                continue;
+        foreach ($validatedReviews as $filePath => $reviewResult) {
+            $originalFindings = $data['reviews'][$filePath]['findings'];
+            $unresolvedFindings = [];
+
+            foreach ($reviewResult->getFindings() as $index => $finding) {
+                $fingerprint = $this->fingerprint($filePath, $finding);
+
+                if (isset($resolvedFingerprints[$fingerprint])) {
+                    $removed++;
+                    continue;
+                }
+
+                $unresolvedFindings[] = $originalFindings[$index];
             }
 
-            $data['reviews'][$filePath]['findings'] = array_values(array_filter(
-                $review['findings'],
-                function (mixed $finding) use (
-                    $filePath,
-                    $resolvedFingerprints,
-                    &$removed,
-                ): bool {
-                    if (!is_array($finding)) {
-                        return true;
-                    }
-
-                    $fingerprint = $this->fingerprint($filePath, $finding);
-
-                    if (!isset($resolvedFingerprints[$fingerprint])) {
-                        return true;
-                    }
-
-                    $removed++;
-
-                    return false;
-                },
-            ));
+            $data['reviews'][$filePath]['findings'] = $unresolvedFindings;
         }
 
         try {
@@ -125,15 +115,14 @@ final class ReviewArtifactFilter
     }
 
     /**
-     * @param array<string, mixed> $finding
      */
-    private function fingerprint(string $file, array $finding): string
+    private function fingerprint(string $file, ReviewFinding $finding): string
     {
         $payload = implode('|', [
             $this->normalize(ltrim($file, '/')),
-            $this->normalize((string) ($finding['category'] ?? '')),
-            $this->normalize((string) ($finding['message'] ?? '')),
-            $this->normalize((string) ($finding['suggestion'] ?? '')),
+            $this->normalize($finding->getCategory()),
+            $this->normalize($finding->getMessage()),
+            $this->normalize($finding->getSuggestion()),
         ]);
 
         return hash('sha256', $payload);

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\AI\Review;
 
+use RuntimeException;
+
 final class ReviewCommentPreparer
 {
     private const MAX_INLINE_LINE_DISTANCE = 3;
@@ -26,6 +28,13 @@ final class ReviewCommentPreparer
         string $changedDiff,
     ): array {
         $result = $this->serializer->deserialize($reviewJson);
+
+        if (!isset($result['reviews']) || !is_array($result['reviews'])) {
+            throw new RuntimeException(
+                'Review results do not contain a valid reviews structure.',
+            );
+        }
+
         $changedLines = $this->changedLinesParser->parse($changedDiff);
         $inline = [];
         $general = [];

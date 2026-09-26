@@ -71,6 +71,7 @@ final class ReviewArtifactFilterTest extends TestCase
                 JSON_THROW_ON_ERROR,
             );
 
+            self::assertSame('BASE', $filtered['base_sha']);
             self::assertCount(1, $filtered['reviews']['fixtures/test1.php']['findings']);
             self::assertSame(
                 'Another finding.',
