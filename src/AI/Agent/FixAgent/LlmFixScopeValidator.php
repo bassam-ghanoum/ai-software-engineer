@@ -31,7 +31,6 @@ final class LlmFixScopeValidator implements FixScopeValidatorInterface
         $response = $this->llm->generateJson($prompt);
 
         try {
-            /** @var array{approved?: bool, reason?: string} $data */
             $data = json_decode(
                 $this->extractJson($response),
                 true,
@@ -43,6 +42,19 @@ final class LlmFixScopeValidator implements FixScopeValidatorInterface
                 'The fix scope validator returned invalid JSON.',
                 0,
                 $exception,
+            );
+        }
+
+        if (
+            !is_array($data)
+            || !array_key_exists('approved', $data)
+            || !is_bool($data['approved'])
+            || !array_key_exists('reason', $data)
+            || !is_string($data['reason'])
+            || array_diff(array_keys($data), ['approved', 'reason']) !== []
+        ) {
+            throw new RuntimeException(
+                'The fix scope validator returned an invalid response structure.',
             );
         }
 

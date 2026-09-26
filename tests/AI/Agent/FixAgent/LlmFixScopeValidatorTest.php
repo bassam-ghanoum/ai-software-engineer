@@ -94,6 +94,30 @@ final class LlmFixScopeValidatorTest extends TestCase
         );
     }
 
+    public function testMissingReasonInResponseThrowsException(): void
+    {
+        $llm = $this->createMock(LlmInterface::class);
+
+        $llm
+            ->expects($this->once())
+            ->method('generateJson')
+            ->willReturn('{"approved":true}');
+
+        $validator = new LlmFixScopeValidator($llm);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage(
+            'The fix scope validator returned an invalid response structure.'
+        );
+
+        $validator->validate(
+            'fixtures/test.php',
+            '<?php echo *"Hello";',
+            '<?php echo "Hello";',
+            $this->createReviewResult(),
+        );
+    }
+
     public function testValidatorSendsFileAndSourceToLlm(): void
     {
         $llm = $this->createMock(LlmInterface::class);
