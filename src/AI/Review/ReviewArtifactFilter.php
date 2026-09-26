@@ -6,6 +6,11 @@ namespace App\AI\Review;
 
 final class ReviewArtifactFilter
 {
+    public function __construct(
+        private readonly ReviewResultSerializer $serializer,
+    ) {
+    }
+
     /**
      * @param array<string, bool> $resolvedFingerprints
      */
@@ -14,6 +19,7 @@ final class ReviewArtifactFilter
         array $resolvedFingerprints,
     ): int {
         $json = $this->readFile($file);
+        $this->serializer->deserialize($json);
 
         try {
             $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
@@ -92,7 +98,7 @@ final class ReviewArtifactFilter
         $json = $this->readFile($file);
 
         try {
-            $fingerprints = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+            $fingerprints = json_decode($json, false, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException $exception) {
             throw new \RuntimeException(
                 'Resolved review fingerprints are not valid JSON.',

@@ -66,6 +66,96 @@ final class GeminiLlmTest extends TestCase
         );
     }
 
+    public function testGenerateConcatenatesTextFromAllResponseParts(): void
+    {
+        $response = $this->createStub(ResponseInterface::class);
+
+        $response
+            ->method('getStatusCode')
+            ->willReturn(200);
+
+        $response
+            ->method('toArray')
+            ->willReturn([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                ['text' => '<?php '],
+                                ['text' => 'return "complete";'],
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $httpClient = $this->createStub(HttpClientInterface::class);
+        $httpClient
+            ->method('request')
+            ->willReturn($response);
+
+        $llm = new GeminiLlm(
+            $httpClient,
+            'test-api-key',
+            'gemini-2.5-flash',
+            0,
+        );
+
+        self::assertSame(
+            '<?php return "complete";',
+            $llm->generate('Test prompt'),
+        );
+    }
+
+    public function testGenerateDoesNotIncludeResponsePayloadWhenTextIsMissing(): void
+    {
+        $response = $this->createStub(ResponseInterface::class);
+
+        $response
+            ->method('getStatusCode')
+            ->willReturn(200);
+
+        $response
+            ->method('toArray')
+            ->willReturn([
+                'candidates' => [
+                    [
+                        'content' => [
+                            'parts' => [
+                                ['functionCall' => ['name' => 'sensitive-detail']],
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $httpClient = $this->createStub(HttpClientInterface::class);
+        $httpClient
+            ->method('request')
+            ->willReturn($response);
+
+        $llm = new GeminiLlm(
+            $httpClient,
+            'test-api-key',
+            'gemini-2.5-flash',
+            0,
+        );
+
+        try {
+            $llm->generate('Test prompt');
+            self::fail('Expected missing Gemini text to throw.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame(
+                'Gemini returned no text content.',
+                $exception->getMessage(),
+            );
+            self::assertStringNotContainsString(
+                'sensitive-detail',
+                $exception->getMessage(),
+            );
+        }
+    }
+
     public function testGenerateJsonReturnsJsonFromGeminiResponse(): void
     {
         $response = $this->createStub(ResponseInterface::class);

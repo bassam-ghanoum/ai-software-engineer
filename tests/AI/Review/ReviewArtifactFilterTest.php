@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\AI\Review;
 
 use App\AI\Review\ReviewArtifactFilter;
+use App\AI\Review\ReviewResultSerializer;
 use PHPUnit\Framework\TestCase;
 
 final class ReviewArtifactFilterTest extends TestCase
@@ -53,7 +54,7 @@ final class ReviewArtifactFilterTest extends TestCase
         );
 
         try {
-            $filter = new ReviewArtifactFilter();
+            $filter = new ReviewArtifactFilter(new ReviewResultSerializer());
 
             self::assertSame(
                 1,
@@ -77,6 +78,58 @@ final class ReviewArtifactFilterTest extends TestCase
             );
         } finally {
             unlink($reviewFile);
+            unlink($fingerprintsFile);
+        }
+    }
+
+    public function testItRejectsMalformedReviewFindingsBeforeFiltering(): void
+    {
+        $reviewFile = tempnam(sys_get_temp_dir(), 'review-result-');
+
+        self::assertNotFalse($reviewFile);
+
+        file_put_contents($reviewFile, json_encode([
+            'commit_sha' => 'HEAD',
+            'reviews' => [
+                'src/Example.php' => [
+                    'findings' => [
+                        ['line' => 4],
+                    ],
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage(
+                'Finding for file "src/Example.php" is missing field "severity".',
+            );
+
+            (new ReviewArtifactFilter(new ReviewResultSerializer()))->filter(
+                $reviewFile,
+                [],
+            );
+        } finally {
+            unlink($reviewFile);
+        }
+    }
+
+    public function testItRejectsObjectInsteadOfResolvedFingerprintArray(): void
+    {
+        $fingerprintsFile = tempnam(sys_get_temp_dir(), 'resolved-fingerprints-');
+
+        self::assertNotFalse($fingerprintsFile);
+        file_put_contents($fingerprintsFile, '{"fingerprint":true}');
+
+        try {
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage(
+                'Resolved review fingerprints must be a JSON array.',
+            );
+
+            (new ReviewArtifactFilter(new ReviewResultSerializer()))
+                ->readResolvedFingerprints($fingerprintsFile);
+        } finally {
             unlink($fingerprintsFile);
         }
     }

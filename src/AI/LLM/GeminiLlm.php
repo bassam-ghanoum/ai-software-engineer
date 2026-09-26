@@ -130,19 +130,25 @@ final class GeminiLlm implements LlmInterface
      */
     private function extractText(array $data): string
     {
-        $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? null;
+        $parts = $data['candidates'][0]['content']['parts'] ?? null;
 
-        if (is_string($text) && $text !== '') {
+        if (!is_array($parts)) {
+            throw new RuntimeException('Gemini returned no text content.');
+        }
+
+        $text = '';
+
+        foreach ($parts as $part) {
+            if (is_array($part) && is_string($part['text'] ?? null)) {
+                $text .= $part['text'];
+            }
+        }
+
+        if ($text !== '') {
             return $text;
         }
 
-        throw new RuntimeException(sprintf(
-            'Gemini returned no text content. Response: %s',
-            json_encode(
-                $data,
-                JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES,
-            ),
-        ));
+        throw new RuntimeException('Gemini returned no text content.');
     }
 
     private function normalizeJsonResponse(string $response): string

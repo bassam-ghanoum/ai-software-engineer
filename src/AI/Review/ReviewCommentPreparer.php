@@ -16,7 +16,7 @@ final class ReviewCommentPreparer
 
     /**
      * @return array{
-        *     changed_lines: array<string, array<int, bool>>,
+    *     changed_lines: array<string, array<int, bool>>,
      *     inline: array<int, array<string, mixed>>,
      *     general: array<int, array<string, mixed>>
      * }
