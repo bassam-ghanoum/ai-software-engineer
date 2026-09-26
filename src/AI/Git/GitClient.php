@@ -16,7 +16,7 @@ final class GitClient implements GitInterface
         string $to,
     ): array {
         $command = sprintf(
-            'git diff --name-only --diff-filter=ACMR %s %s -- \'*.php\'',
+            'git diff --name-only -z --diff-filter=ACMR --end-of-options %s %s -- \'*.php\'',
             escapeshellarg($from),
             escapeshellarg($to),
         );
@@ -31,7 +31,7 @@ final class GitClient implements GitInterface
 
         return array_values(
             array_filter(
-                array_map('trim', $result['output']),
+                explode("\0", $result['output']),
                 static fn (string $path): bool => $path !== '',
             ),
         );
@@ -60,5 +60,24 @@ final class GitClient implements GitInterface
         }
 
         return $code;
+    }
+
+    public function readFileAtRevision(string $path, string $revision): string
+    {
+        $fileSpec = sprintf('%s:%s', $revision, $path);
+        $command = sprintf(
+            'git show --end-of-options %s',
+            escapeshellarg($fileSpec),
+        );
+
+        $result = $this->commandRunner->run($command);
+
+        if ($result['exitCode'] !== 0) {
+            throw new \RuntimeException(
+                sprintf('Failed to read PHP file from Git revision: %s', $fileSpec),
+            );
+        }
+
+        return $result['output'];
     }
 }

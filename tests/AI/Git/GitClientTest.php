@@ -20,15 +20,10 @@ final class GitClientTest extends TestCase
             ->expects(self::once())
             ->method('run')
             ->with(
-                "git diff --name-only --diff-filter=ACMR 'HEAD~1' 'HEAD' -- '*.php'",
+                "git diff --name-only -z --diff-filter=ACMR --end-of-options 'HEAD~1' 'HEAD' -- '*.php'",
             )
             ->willReturn([
-                'output' => [
-                    'src/Foo.php',
-                    'src/Bar.php',
-                    '',
-                    '  src/Baz.php  ',
-                ],
+                'output' => "src/Foo.php\0src/Bar.php\0\0  src/Baz.php  \0src/Multi\nLine.php\0",
                 'exitCode' => 0,
             ]);
 
@@ -43,7 +38,8 @@ final class GitClientTest extends TestCase
             [
                 'src/Foo.php',
                 'src/Bar.php',
-                'src/Baz.php',
+                '  src/Baz.php  ',
+                "src/Multi\nLine.php",
             ],
             $result,
         );
@@ -90,6 +86,54 @@ final class GitClientTest extends TestCase
             'interface LlmInterface',
             $result,
         );
+    }
+
+    public function testItReadsFileContentAtSpecifiedRevision(): void
+    {
+        $commandRunner = $this->createMock(
+            GitCommandRunnerInterface::class,
+        );
+
+        $commandRunner
+            ->expects(self::once())
+            ->method('run')
+            ->with("git show --end-of-options 'HEAD:src/Foo.php'")
+            ->willReturn([
+                'output' => "<?php\nreturn 'target revision';\n",
+                'exitCode' => 0,
+            ]);
+
+        $client = new GitClient($commandRunner);
+
+        self::assertSame(
+            "<?php\nreturn 'target revision';\n",
+            $client->readFileAtRevision('src/Foo.php', 'HEAD'),
+        );
+    }
+
+    public function testItThrowsWhenFileDoesNotExistAtRevision(): void
+    {
+        $commandRunner = $this->createMock(
+            GitCommandRunnerInterface::class,
+        );
+
+        $commandRunner
+            ->expects(self::once())
+            ->method('run')
+            ->with("git show --end-of-options 'HEAD:missing.php'")
+            ->willReturn([
+                'output' => '',
+                'exitCode' => 128,
+            ]);
+
+        $client = new GitClient($commandRunner);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Failed to read PHP file from Git revision: HEAD:missing.php',
+        );
+
+        $client->readFileAtRevision('missing.php', 'HEAD');
     }
 
     public function testItThrowsExceptionWhenFileDoesNotExist(): void

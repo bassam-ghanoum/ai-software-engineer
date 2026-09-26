@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\AI\Git;
 
 final class GitChangedCodeProvider implements ChangedCodeProviderInterface
@@ -21,7 +23,7 @@ final class GitChangedCodeProvider implements ChangedCodeProviderInterface
         $files = [];
 
         foreach ($paths as $path) {
-            $files[$path] = $this->git->readFile($path);
+            $files[$path] = $this->git->readFileAtRevision($path, $to);
         }
 
         return $files;

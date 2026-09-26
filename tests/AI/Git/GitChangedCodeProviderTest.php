@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Tests\AI\Git;
 
 use App\AI\Git\GitChangedCodeProvider;
@@ -23,14 +25,16 @@ final class GitChangedCodeProviderTest extends TestCase
 
         $git
             ->expects(self::exactly(2))
-            ->method('readFile')
+            ->method('readFileAtRevision')
             ->willReturnMap([
                 [
                     'src/Service/UserService.php',
+                    'HEAD',
                     '<?php class UserService {}',
                 ],
                 [
                     'src/Repository/UserRepository.php',
+                    'HEAD',
                     '<?php class UserRepository {}',
                 ],
             ]);
@@ -60,7 +64,7 @@ final class GitChangedCodeProviderTest extends TestCase
 
         $git
             ->expects(self::never())
-            ->method('readFile');
+            ->method('readFileAtRevision');
 
         $provider = new GitChangedCodeProvider($git);
 
@@ -83,11 +87,11 @@ final class GitChangedCodeProviderTest extends TestCase
 
         $git
             ->expects(self::exactly(3))
-            ->method('readFile')
+            ->method('readFileAtRevision')
             ->willReturnMap([
-                ['src/A.php', '<?php class A {}'],
-                ['src/B.php', '<?php class B {}'],
-                ['src/C.php', '<?php class C {}'],
+                ['src/A.php', 'HEAD', '<?php class A {}'],
+                ['src/B.php', 'HEAD', '<?php class B {}'],
+                ['src/C.php', 'HEAD', '<?php class C {}'],
             ]);
 
         $provider = new GitChangedCodeProvider($git);

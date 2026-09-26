@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\AI\Git;
 
 interface GitInterface
@@ -13,4 +15,6 @@ interface GitInterface
     ): array;
 
     public function readFile(string $path): string;
+
+    public function readFileAtRevision(string $path, string $revision): string;
 }
