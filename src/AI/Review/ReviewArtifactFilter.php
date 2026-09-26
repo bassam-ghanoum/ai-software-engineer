@@ -19,7 +19,7 @@ final class ReviewArtifactFilter
         array $resolvedFingerprints,
     ): int {
         $json = $this->readFile($file);
-        $this->serializer->deserialize($json);
+        $deserialized = $this->serializer->deserialize($json);
 
         try {
             $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
@@ -37,7 +37,7 @@ final class ReviewArtifactFilter
             );
         }
 
-        $validatedReviews = $this->serializer->deserialize($json)['reviews'];
+        $validatedReviews = $deserialized['reviews'];
         $removed = 0;
 
         foreach ($validatedReviews as $filePath => $reviewResult) {
