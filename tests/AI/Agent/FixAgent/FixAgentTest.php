@@ -98,6 +98,13 @@ PHP;
                         $prompt,
                     );
 
+                    preg_match_all('/^(\d+)\./m', $prompt, $ruleNumbers);
+
+                    self::assertSame(
+                        range(1, 22),
+                        array_map('intval', $ruleNumbers[1]),
+                    );
+
                     self::assertStringContainsString(
                         'Change tests only when an approved finding specifically identifies a defect',
                         $prompt,
@@ -114,7 +121,7 @@ PHP;
                     );
 
                     self::assertStringContainsString(
-                        'Do NOT add a superficial prefix or regex check',
+                        'superficial prefix or regex check while still passing',
                         $prompt,
                     );
 

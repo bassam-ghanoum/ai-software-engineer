@@ -162,8 +162,6 @@ STRICT EDITING RULES:
 21. Do NOT return explanations.
 22. Do NOT return a diff.
 
-17. Do NOT return a diff.
-
 The output must contain only the complete PHP source code.
 
 Before returning the source, compare it mentally with the original source and
