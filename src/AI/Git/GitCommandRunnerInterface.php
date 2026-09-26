@@ -7,7 +7,8 @@ namespace App\AI\Git;
 interface GitCommandRunnerInterface
 {
     /**
-    * @return array{output: string, exitCode: int}
+     * @param list<string> $command
+     * @return array{output: string, errorOutput: string, exitCode: int}
      */
-    public function run(string $command): array;
+    public function run(array $command): array;
 }

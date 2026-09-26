@@ -15,17 +15,27 @@ final class GitClient implements GitInterface
         string $from,
         string $to,
     ): array {
-        $command = sprintf(
-            'git diff --name-only -z --diff-filter=ACMR --end-of-options %s %s -- \'*.php\'',
-            escapeshellarg($from),
-            escapeshellarg($to),
-        );
+        $command = [
+            'git',
+            'diff',
+            '--name-only',
+            '-z',
+            '--diff-filter=ACMR',
+            '--end-of-options',
+            $from,
+            $to,
+            '--',
+            '*.php',
+        ];
 
         $result = $this->commandRunner->run($command);
 
         if ($result['exitCode'] !== 0) {
             throw new \RuntimeException(
-                'Failed to determine changed PHP files from Git.',
+                sprintf(
+                    'Failed to determine changed PHP files from Git: %s',
+                    trim($result['errorOutput']),
+                ),
             );
         }
 
@@ -65,16 +75,17 @@ final class GitClient implements GitInterface
     public function readFileAtRevision(string $path, string $revision): string
     {
         $fileSpec = sprintf('%s:%s', $revision, $path);
-        $command = sprintf(
-            'git show --end-of-options %s',
-            escapeshellarg($fileSpec),
-        );
+        $command = ['git', 'show', '--end-of-options', $fileSpec];
 
         $result = $this->commandRunner->run($command);
 
         if ($result['exitCode'] !== 0) {
             throw new \RuntimeException(
-                sprintf('Failed to read PHP file from Git revision: %s', $fileSpec),
+                sprintf(
+                    'Failed to read PHP file from Git revision %s: %s',
+                    $fileSpec,
+                    trim($result['errorOutput']),
+                ),
             );
         }
 

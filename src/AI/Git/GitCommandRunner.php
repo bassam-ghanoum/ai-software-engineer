@@ -4,14 +4,25 @@ declare(strict_types=1);
 
 namespace App\AI\Git;
 
+use InvalidArgumentException;
+use RuntimeException;
+
 final class GitCommandRunner implements GitCommandRunnerInterface
 {
-    public function run(string $command): array
+    /**
+     * @param list<string> $command
+     * @return array{output: string, errorOutput: string, exitCode: int}
+     */
+    public function run(array $command): array
     {
+        if ($command === [] || $command[0] === '') {
+            throw new InvalidArgumentException('Command must include an executable.');
+        }
+
         $process = proc_open(
             $command,
             [
-                0 => ['pipe', 'r'],
+                0 => ['file', PHP_OS_FAMILY === 'Windows' ? 'NUL' : '/dev/null', 'r'],
                 1 => ['pipe', 'w'],
                 2 => ['pipe', 'w'],
             ],
@@ -19,54 +30,67 @@ final class GitCommandRunner implements GitCommandRunnerInterface
         );
 
         if (!is_resource($process)) {
-            throw new \RuntimeException('Unable to start Git command.');
+            throw new RuntimeException('Unable to start command.');
         }
-
-        fclose($pipes[0]);
 
         $output = '';
+        $errorOutput = '';
         $streams = [
             'output' => $pipes[1],
-            'error' => $pipes[2],
+            'errorOutput' => $pipes[2],
         ];
+        $processClosed = false;
 
-        while ($streams !== []) {
-            $read = array_values($streams);
-            $write = null;
-            $except = null;
-            $ready = stream_select($read, $write, $except, null);
+        try {
+            while ($streams !== []) {
+                $read = array_values($streams);
+                $write = null;
+                $except = null;
+                $ready = stream_select($read, $write, $except, null);
 
-            if ($ready === false) {
-                proc_terminate($process);
+                if ($ready === false) {
+                    throw new RuntimeException('Unable to read command output.');
+                }
 
-                throw new \RuntimeException('Unable to read Git command output.');
+                foreach ($read as $stream) {
+                    $streamName = array_search($stream, $streams, true);
+                    $chunk = fread($stream, 8192);
+
+                    if ($chunk === false) {
+                        throw new RuntimeException('Unable to read command output.');
+                    }
+
+                    if ($streamName === 'output') {
+                        $output .= $chunk;
+                    } else {
+                        $errorOutput .= $chunk;
+                    }
+
+                    if (feof($stream)) {
+                        fclose($stream);
+                        unset($streams[$streamName]);
+                    }
+                }
             }
 
-            foreach ($read as $stream) {
-                $streamName = array_search($stream, $streams, true);
-                $chunk = fread($stream, 8192);
-
-                if ($chunk === false) {
-                    proc_terminate($process);
-
-                    throw new \RuntimeException('Unable to read Git command output.');
-                }
-
-                if ($streamName === 'output') {
-                    $output .= $chunk;
-                }
-
-                if (feof($stream)) {
+            $exitCode = proc_close($process);
+            $processClosed = true;
+        } finally {
+            foreach ($streams as $stream) {
+                if (is_resource($stream)) {
                     fclose($stream);
-                    unset($streams[$streamName]);
                 }
+            }
+
+            if (!$processClosed) {
+                proc_terminate($process);
+                proc_close($process);
             }
         }
-
-        $exitCode = proc_close($process);
 
         return [
             'output' => $output,
+            'errorOutput' => $errorOutput,
             'exitCode' => $exitCode,
         ];
     }

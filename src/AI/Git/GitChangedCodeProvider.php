@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\AI\Git;
 
+use RuntimeException;
+
 final class GitChangedCodeProvider implements ChangedCodeProviderInterface
 {
     public function __construct(
@@ -23,7 +25,19 @@ final class GitChangedCodeProvider implements ChangedCodeProviderInterface
         $files = [];
 
         foreach ($paths as $path) {
-            $files[$path] = $this->git->readFileAtRevision($path, $to);
+            try {
+                $files[$path] = $this->git->readFileAtRevision($path, $to);
+            } catch (\Throwable $exception) {
+                throw new RuntimeException(
+                    sprintf(
+                        'Failed to read changed PHP file "%s" at revision %s.',
+                        $path,
+                        $to,
+                    ),
+                    0,
+                    $exception,
+                );
+            }
         }
 
         return $files;

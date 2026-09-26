@@ -104,4 +104,34 @@ final class GitChangedCodeProviderTest extends TestCase
         self::assertSame('<?php class B {}', $result['src/B.php']);
         self::assertSame('<?php class C {}', $result['src/C.php']);
     }
+
+    public function testReadFailureIncludesPathAndRevisionAndPreservesCause(): void
+    {
+        $git = $this->createMock(GitInterface::class);
+
+        $git
+            ->expects(self::once())
+            ->method('getChangedPhpFiles')
+            ->with('BASE', 'HEAD')
+            ->willReturn(['src/Missing.php']);
+
+        $git
+            ->expects(self::once())
+            ->method('readFileAtRevision')
+            ->with('src/Missing.php', 'HEAD')
+            ->willThrowException(new \RuntimeException('Git object missing.'));
+
+        $provider = new GitChangedCodeProvider($git);
+
+        try {
+            $provider->getChangedPhpFiles('BASE', 'HEAD');
+            self::fail('Expected the provider to reject the incomplete changed-file set.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame(
+                'Failed to read changed PHP file "src/Missing.php" at revision HEAD.',
+                $exception->getMessage(),
+            );
+            self::assertSame('Git object missing.', $exception->getPrevious()?->getMessage());
+        }
+    }
 }

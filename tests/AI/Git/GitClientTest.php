@@ -20,10 +20,22 @@ final class GitClientTest extends TestCase
             ->expects(self::once())
             ->method('run')
             ->with(
-                "git diff --name-only -z --diff-filter=ACMR --end-of-options 'HEAD~1' 'HEAD' -- '*.php'",
+                [
+                    'git',
+                    'diff',
+                    '--name-only',
+                    '-z',
+                    '--diff-filter=ACMR',
+                    '--end-of-options',
+                    'HEAD~1',
+                    'HEAD',
+                    '--',
+                    '*.php',
+                ],
             )
             ->willReturn([
                 'output' => "src/Foo.php\0src/Bar.php\0\0  src/Baz.php  \0src/Multi\nLine.php\0",
+                'errorOutput' => '',
                 'exitCode' => 0,
             ]);
 
@@ -55,7 +67,8 @@ final class GitClientTest extends TestCase
             ->expects(self::once())
             ->method('run')
             ->willReturn([
-                'output' => [],
+                'output' => '',
+                'errorOutput' => 'bad revision',
                 'exitCode' => 128,
             ]);
 
@@ -63,7 +76,7 @@ final class GitClientTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
-            'Failed to determine changed PHP files from Git.',
+            'Failed to determine changed PHP files from Git: bad revision',
         );
 
         $client->getChangedPhpFiles('HEAD~1', 'HEAD');
@@ -71,21 +84,26 @@ final class GitClientTest extends TestCase
 
     public function testItReadsExistingFileContent(): void
     {
-        $commandRunner = $this->createStub(
+        $commandRunner = $this->createMock(
             GitCommandRunnerInterface::class,
         );
+        $commandRunner
+            ->expects(self::never())
+            ->method('run');
 
         $client = new GitClient($commandRunner);
 
-        $path = 'src/AI/LLM/LlmInterface.php';
+        $path = tempnam(sys_get_temp_dir(), 'git-client-');
+        self::assertNotFalse($path);
 
-        $result = $client->readFile($path);
+        try {
+            $expected = '<?php interface Example {}';
+            self::assertSame(strlen($expected), file_put_contents($path, $expected));
 
-        self::assertIsString($result);
-        self::assertStringContainsString(
-            'interface LlmInterface',
-            $result,
-        );
+            self::assertSame($expected, $client->readFile($path));
+        } finally {
+            unlink($path);
+        }
     }
 
     public function testItReadsFileContentAtSpecifiedRevision(): void
@@ -97,9 +115,10 @@ final class GitClientTest extends TestCase
         $commandRunner
             ->expects(self::once())
             ->method('run')
-            ->with("git show --end-of-options 'HEAD:src/Foo.php'")
+            ->with(['git', 'show', '--end-of-options', 'HEAD:src/Foo.php'])
             ->willReturn([
                 'output' => "<?php\nreturn 'target revision';\n",
+                'errorOutput' => '',
                 'exitCode' => 0,
             ]);
 
@@ -120,9 +139,10 @@ final class GitClientTest extends TestCase
         $commandRunner
             ->expects(self::once())
             ->method('run')
-            ->with("git show --end-of-options 'HEAD:missing.php'")
+            ->with(['git', 'show', '--end-of-options', 'HEAD:missing.php'])
             ->willReturn([
                 'output' => '',
+                'errorOutput' => 'path not found',
                 'exitCode' => 128,
             ]);
 
@@ -130,7 +150,7 @@ final class GitClientTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
-            'Failed to read PHP file from Git revision: HEAD:missing.php',
+            'Failed to read PHP file from Git revision HEAD:missing.php: path not found',
         );
 
         $client->readFileAtRevision('missing.php', 'HEAD');
@@ -138,17 +158,26 @@ final class GitClientTest extends TestCase
 
     public function testItThrowsExceptionWhenFileDoesNotExist(): void
     {
-        $commandRunner = $this->createStub(
+        $commandRunner = $this->createMock(
             GitCommandRunnerInterface::class,
         );
+        $commandRunner
+            ->expects(self::never())
+            ->method('run');
 
         $client = new GitClient($commandRunner);
 
+        $path = sys_get_temp_dir()
+            . DIRECTORY_SEPARATOR
+            . 'missing-'
+            . bin2hex(random_bytes(16))
+            . '.php';
+
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
-            'Failed to read PHP file: does-not-exist.php',
+            sprintf('Failed to read PHP file: %s', $path),
         );
 
-        $client->readFile('does-not-exist.php');
+        $client->readFile($path);
     }
 }
