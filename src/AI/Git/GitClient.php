@@ -49,7 +49,8 @@ final class GitClient implements GitInterface
 
     public function readFile(string $path): string
     {
-        if (!is_file($path)) {
+        $realPath = realpath($path);
+        if ($realPath === false || !is_file($realPath)) {
             throw new \RuntimeException(
                 sprintf(
                     'Failed to read PHP file: %s',
@@ -58,7 +59,7 @@ final class GitClient implements GitInterface
             );
         }
 
-        $code = file_get_contents($path);
+        $code = file_get_contents($realPath);
 
         if ($code === false) {
             throw new \RuntimeException(
@@ -74,6 +75,10 @@ final class GitClient implements GitInterface
 
     public function readFileAtRevision(string $path, string $revision): string
     {
+        if (preg_match('/[^a-zA-Z0-9_\-\.\/]/', $revision) === 1 || preg_match('/[\x00-\x1F\x7F]/', $path) === 1) {
+            throw new \InvalidArgumentException('Invalid path or revision parameter.');
+        }
+
         $fileSpec = sprintf('%s:%s', $revision, $path);
         $command = ['git', 'show', '--end-of-options', $fileSpec];
 
