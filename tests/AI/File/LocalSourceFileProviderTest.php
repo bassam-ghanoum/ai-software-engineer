@@ -156,9 +156,6 @@ final class LocalSourceFileProviderTest extends TestCase
         );
     }
 
-    /**
-     * @return void
-     */
     private function removeDirectory(string $directory): void
     {
         if (!is_dir($directory)) {

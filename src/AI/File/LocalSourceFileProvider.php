@@ -43,7 +43,7 @@ final class LocalSourceFileProvider implements SourceFileProviderInterface
 
         $directory = dirname($filePath);
 
-        if (!is_dir($directory) && !mkdir($directory, 0777, true) && !is_dir($directory)) {
+        if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
             throw new RuntimeException(
                 sprintf('Unable to create directory: %s', $directory)
             );

@@ -27,21 +27,13 @@ final class PhpSourceValidator implements SourceValidatorInterface
                 );
             }
 
-            $command = sprintf(
-                '%s -l %s 2>&1',
-                escapeshellarg(PHP_BINARY),
-                escapeshellarg($temporaryFile),
-            );
-
-            exec($command, $output, $exitCode);
-
-            if ($exitCode !== 0) {
-                throw new RuntimeException(sprintf(
-                    'Invalid PHP source for %s: %s',
-                    $filePath,
-                    implode(PHP_EOL, $output),
-                ));
-            }
+            @token_get_all($sourceCode, TOKEN_PARSE);
+        } catch (\ParseError $e) {
+            throw new RuntimeException(sprintf(
+                'Invalid PHP source for %s: %s',
+                $filePath,
+                $e->getMessage(),
+            ));
         } finally {
             if (is_file($temporaryFile)) {
                 unlink($temporaryFile);
