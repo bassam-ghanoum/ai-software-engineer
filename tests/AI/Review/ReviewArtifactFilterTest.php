@@ -115,6 +115,44 @@ final class ReviewArtifactFilterTest extends TestCase
         }
     }
 
+    public function testItRejectsStringFindingLineBeforeConstructingReviewFinding(): void
+    {
+        $reviewFile = tempnam(sys_get_temp_dir(), 'review-result-');
+
+        self::assertNotFalse($reviewFile);
+
+        file_put_contents($reviewFile, json_encode([
+            'commit_sha' => 'HEAD',
+            'reviews' => [
+                'src/Example.php' => [
+                    'findings' => [
+                        [
+                            'line' => '4',
+                            'severity' => 'high',
+                            'category' => 'bug',
+                            'message' => 'A bug.',
+                            'suggestion' => 'Fix it.',
+                        ],
+                    ],
+                ],
+            ],
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage(
+                'Finding for file "src/Example.php" has an invalid line.',
+            );
+
+            (new ReviewArtifactFilter(new ReviewResultSerializer()))->filter(
+                $reviewFile,
+                [],
+            );
+        } finally {
+            unlink($reviewFile);
+        }
+    }
+
     public function testItRejectsObjectInsteadOfResolvedFingerprintArray(): void
     {
         $fingerprintsFile = tempnam(sys_get_temp_dir(), 'resolved-fingerprints-');
