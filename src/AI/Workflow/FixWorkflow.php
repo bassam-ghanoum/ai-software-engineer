@@ -38,10 +38,10 @@ final class FixWorkflow implements FixWorkflowInterface
             return new FixResult([]);
         }
 
-        $fixedFiles = [];
+        $validatedFiles = [];
 
         foreach ($reviews as $filePath => $reviewResult) {
-            $fixedSource = $this->fixFile(
+            $fixedSource = $this->prepareFix(
                 $filePath,
                 $reviewResult,
             );
@@ -50,13 +50,29 @@ final class FixWorkflow implements FixWorkflowInterface
                 continue;
             }
 
+            $validatedFiles[$filePath] = $fixedSource;
+        }
+
+        $fixedFiles = [];
+
+        foreach ($validatedFiles as $filePath => $fixedSource) {
+            $this->sourceFileProvider->write(
+                $filePath,
+                $fixedSource,
+            );
+
+            echo sprintf(
+                "Fix accepted for %s.\n",
+                $filePath,
+            );
+
             $fixedFiles[$filePath] = $fixedSource;
         }
 
         return new FixResult($fixedFiles);
     }
 
-    private function fixFile(
+    private function prepareFix(
         string $filePath,
         ReviewResult $reviewResult,
     ): ?string {
@@ -133,21 +149,6 @@ final class FixWorkflow implements FixWorkflowInterface
                     $sourceCode,
                     $fixedSource,
                     $reviewResult,
-                );
-
-                /*
-                 * Only write after BOTH validators pass.
-                 */
-                $this->sourceFileProvider->write(
-                    $filePath,
-                    $fixedSource,
-                );
-
-                echo sprintf(
-                    "Fix accepted for %s on attempt %d/%d.\n",
-                    $filePath,
-                    $attempt,
-                    self::MAX_FIX_ATTEMPTS,
                 );
 
                 return $fixedSource;

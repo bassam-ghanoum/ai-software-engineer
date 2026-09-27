@@ -523,6 +523,67 @@ PHP;
         );
     }
 
+    public function testDoesNotWriteAnyFileUntilAllFilesPassValidation(): void
+    {
+        $fixAgent = $this->createMock(FixAgentInterface::class);
+        $fileProvider = $this->createMock(SourceFileProviderInterface::class);
+        $sourceValidator = $this->createMock(SourceValidatorInterface::class);
+        $fixScopeValidator = $this->createPassingFixScopeValidator();
+
+        $review = $this->createReviewResult();
+        $sourceOne = '<?php echo "One";';
+        $sourceTwo = '<?php echo "Two";';
+        $fixedOne = '<?php echo "Fixed One";';
+        $fixedTwo = '<?php echo "Fixed Two";';
+
+        $fileProvider
+            ->method('exists')
+            ->willReturn(true);
+        $fileProvider
+            ->expects(self::exactly(2))
+            ->method('read')
+            ->willReturnMap([
+                ['src/One.php', $sourceOne],
+                ['src/Two.php', $sourceTwo],
+            ]);
+        $fixAgent
+            ->expects(self::exactly(4))
+            ->method('fix')
+            ->willReturnCallback(
+                static function (string $filePath) use ($fixedOne, $fixedTwo): string {
+                    return $filePath === 'src/One.php' ? $fixedOne : $fixedTwo;
+                },
+            );
+        $sourceValidator
+            ->expects(self::exactly(4))
+            ->method('validate')
+            ->willReturnCallback(
+                static function (string $filePath): void {
+                    if ($filePath === 'src/Two.php') {
+                        throw new RuntimeException('Second file is invalid.');
+                    }
+                },
+            );
+        $fileProvider
+            ->expects(self::never())
+            ->method('write');
+
+        $workflow = new FixWorkflow(
+            $fixAgent,
+            $fileProvider,
+            $sourceValidator,
+            $fixScopeValidator,
+        );
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Second file is invalid.');
+
+        $workflow->fix([
+            'src/One.php' => $review,
+            'src/Two.php' => $review,
+        ], true);
+    }
+
     public function testFixIsRejectedWhenScopeValidatorFails(): void
     {
         $fixAgent = $this->createMock(FixAgentInterface::class);
