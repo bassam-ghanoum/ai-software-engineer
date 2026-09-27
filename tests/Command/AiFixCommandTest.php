@@ -15,7 +15,7 @@ use Symfony\Component\Console\Tester\CommandTester;
 
 final class AiFixCommandTest extends TestCase
 {
-    public function testItUsesPersistedReviewWithoutRunningAgentOneAgain(): void
+    public function testItUsesPersistedReviewWithoutRunningAgentAgain(): void
     {
         $codeReviewWorkflow = $this->createMock(
             CodeReviewWorkflowInterface::class

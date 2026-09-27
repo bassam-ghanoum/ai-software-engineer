@@ -175,7 +175,7 @@ final class AiReviewCommand extends Command
             $content,
         );
 
-        if ($bytes !== strlen($content)) {
+        if ($bytes === false || $bytes !== strlen($content)) {
             throw new \RuntimeException(
                 sprintf(
                     'Failed to write review result to: %s',
