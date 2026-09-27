@@ -11,6 +11,8 @@ use App\AI\File\SourceFileProviderInterface;
 use App\AI\File\SourceValidatorInterface;
 use App\AI\Review\ReviewResult;
 use InvalidArgumentException;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Throwable;
 
 final class FixWorkflow implements FixWorkflowInterface
@@ -22,6 +24,7 @@ final class FixWorkflow implements FixWorkflowInterface
         private readonly SourceFileProviderInterface $sourceFileProvider,
         private readonly SourceValidatorInterface $sourceValidator,
         private readonly FixScopeValidatorInterface $fixScopeValidator,
+        private readonly LoggerInterface $logger = new NullLogger(),
     ) {
     }
 
@@ -61,10 +64,7 @@ final class FixWorkflow implements FixWorkflowInterface
                 $fixedSource,
             );
 
-            echo sprintf(
-                "Fix accepted for %s.\n",
-                $filePath,
-            );
+            $this->logger->info('AI fix accepted.', ['file' => $filePath]);
 
             $fixedFiles[$filePath] = $fixedSource;
         }
@@ -91,12 +91,11 @@ final class FixWorkflow implements FixWorkflowInterface
         $previousFailure = null;
 
         for ($attempt = 1; $attempt <= self::MAX_FIX_ATTEMPTS; $attempt++) {
-            echo sprintf(
-                "\nFixing: %s (attempt %d/%d)\n",
-                $filePath,
-                $attempt,
-                self::MAX_FIX_ATTEMPTS,
-            );
+            $this->logger->info('Attempting AI fix.', [
+                'file' => $filePath,
+                'attempt' => $attempt,
+                'max_attempts' => self::MAX_FIX_ATTEMPTS,
+            ]);
 
             try {
                 $fixedSource = $this->fixAgent->fix(
@@ -106,22 +105,10 @@ final class FixWorkflow implements FixWorkflowInterface
                     $previousFailure,
                 );
 
-                echo sprintf(
-                    "\n--- AI-Code-Fix-agent generated source for %s ---\n",
-                    $filePath,
-                );
-
-                echo $fixedSource;
-
-                echo sprintf(
-                    "\n--- End AI-Code-Fix-agent generated source for %s ---\n\n",
-                    $filePath,
-                );
-
                 if ($fixedSource === $sourceCode) {
-                    echo sprintf(
-                        "No changes generated for %s.\n",
-                        $filePath,
+                    $this->logger->info(
+                        'AI fix produced no changes.',
+                        ['file' => $filePath],
                     );
 
                     return null;
@@ -155,22 +142,18 @@ final class FixWorkflow implements FixWorkflowInterface
             } catch (Throwable $exception) {
                 $previousFailure = $exception->getMessage();
 
-                echo sprintf(
-                    "Fix attempt %d/%d failed for %s: %s\n",
-                    $attempt,
-                    self::MAX_FIX_ATTEMPTS,
-                    $filePath,
-                    $previousFailure,
-                );
+                $this->logger->warning('AI fix attempt failed.', [
+                    'file' => $filePath,
+                    'attempt' => $attempt,
+                    'max_attempts' => self::MAX_FIX_ATTEMPTS,
+                    'error' => $previousFailure,
+                ]);
 
                 if ($attempt === self::MAX_FIX_ATTEMPTS) {
                     throw $exception;
                 }
 
-                echo sprintf(
-                    "Retrying AI-Code-Fix-Agent for %s...\n",
-                    $filePath,
-                );
+                $this->logger->info('Retrying AI fix.', ['file' => $filePath]);
             }
         }
 

@@ -13,6 +13,7 @@ use App\AI\Review\ReviewResult;
 use App\AI\Workflow\FixWorkflow;
 use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\NullLogger;
 use RuntimeException;
 
 final class FixWorkflowTest extends TestCase
@@ -41,6 +42,7 @@ final class FixWorkflowTest extends TestCase
             $fileProvider,
             $sourceValidator,
             $fixScopeValidator,
+            new NullLogger(),
         );
 
         $review = new ReviewResult([
