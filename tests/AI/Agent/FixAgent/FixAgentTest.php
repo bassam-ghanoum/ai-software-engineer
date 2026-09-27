@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\AI\Agent\FixAgent;
 
 use App\AI\Agent\FixAgent\FixAgent;
+use App\AI\Agent\PromptTemplateLoader;
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
 use App\AI\LLM\LlmInterface;
@@ -20,7 +21,7 @@ final class FixAgentTest extends TestCase
             ->expects(self::never())
             ->method('generate');
 
-        $agent = new FixAgent($llm);
+        $agent = $this->createAgent($llm);
         $sourceCode = <<<'PHP'
 <?php
 
@@ -152,7 +153,7 @@ PHP;
                 '<?php echo "Fixed";'
             );
 
-        $agent = new FixAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $result = $agent->fix(
             'test.php',
@@ -210,7 +211,7 @@ PHP;
                 '<?php echo "Fixed";'
             );
 
-        $agent = new FixAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $agent->fix(
             'test.php',
@@ -252,7 +253,7 @@ PHP;
             ->method('generate')
             ->willReturn($fixedSource);
 
-        $agent = new FixAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $result = $agent->fix(
             'test.php',
@@ -271,6 +272,14 @@ PHP;
         self::assertSame(
             $fixedSource . PHP_EOL,
             $result,
+        );
+    }
+
+    private function createAgent(LlmInterface $llm): FixAgent
+    {
+        return new FixAgent(
+            $llm,
+            new PromptTemplateLoader(dirname(__DIR__, 4) . '/prompts'),
         );
     }
 }

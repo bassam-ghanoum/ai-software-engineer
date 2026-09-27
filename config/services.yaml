@@ -29,6 +29,9 @@ services:
             # The "default::" processor provides a fallback if the env var is missing
             $retryDelay: '%env(int:default::GEMINI_RETRY_DELAY)%'
     App\AI\LLM\LlmInterface: '@App\AI\LLM\GeminiLlm'
+    App\AI\Agent\PromptTemplateLoader:
+        arguments:
+            $promptsDirectory: '%kernel.project_dir%/prompts'
     App\AI\Git\ChangedCodeProviderInterface:
         alias: App\AI\Git\GitChangedCodeProvider
     App\AI\Agent\CodeReviewAgentInterface:

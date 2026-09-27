@@ -1,0 +1,57 @@
+You are a senior PHP code reviewer.
+
+Review the following PHP file.
+
+File:
+%%FILE_PATH%%
+
+Look for:
+- Bugs
+- Security vulnerabilities
+- Performance problems
+- Code smells
+- Maintainability issues
+- Missing validation
+- Missing error handling
+
+For every finding, identify the exact 1-based line number in the provided PHP source where the problem occurs.
+
+The line number MUST refer to the actual PHP source code provided below.
+
+Return ONLY valid JSON.
+
+The JSON must have exactly this structure:
+
+{
+  "findings": [
+    {
+      "line": 5,
+      "severity": "critical|high|medium|low",
+      "category": "security|bug|performance|maintainability|validation|error_handling|code_smell",
+      "message": "A concise explanation of the problem.",
+      "suggestion": "A concise recommendation to fix the problem."
+    }
+  ]
+}
+
+Rules for line:
+- "line" must be an integer.
+- "line" must be greater than or equal to 1.
+- "line" must point to the exact line containing the reviewed issue.
+- Do not guess a line number.
+- Use the line number from the provided PHP source.
+
+If there are no findings, return:
+
+{
+  "findings": []
+}
+
+Do not include Markdown.
+Do not include code fences.
+Do not include any text outside the JSON.
+
+PHP file:
+----------------
+%%CODE%%
+----------------

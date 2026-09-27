@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\AI\Agent;
 
 use App\AI\Agent\CodeReviewAgent;
+use App\AI\Agent\PromptTemplateLoader;
 use App\AI\LLM\LlmInterface;
 use PHPUnit\Framework\TestCase;
 
@@ -17,6 +18,20 @@ final class CodeReviewAgentTest extends TestCase
         $llm
             ->expects(self::once())
             ->method('generateJson')
+            ->with(self::callback(
+                function (string $prompt): bool {
+                    self::assertStringContainsString('File:', $prompt);
+                    self::assertStringContainsString('test.php', $prompt);
+                    self::assertStringContainsString(
+                        '<?php' . PHP_EOL . PHP_EOL . PHP_EOL,
+                        $prompt,
+                    );
+                    self::assertStringNotContainsString('%%FILE_PATH%%', $prompt);
+                    self::assertStringNotContainsString('%%CODE%%', $prompt);
+
+                    return true;
+                },
+            ))
             ->willReturn(
                 json_encode([
                     'findings' => [
@@ -38,7 +53,7 @@ final class CodeReviewAgentTest extends TestCase
                 ], JSON_THROW_ON_ERROR)
             );
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $result = $agent->review(
             'test.php',
@@ -86,7 +101,7 @@ final class CodeReviewAgentTest extends TestCase
             ->method('generateJson')
             ->willReturn('this is not valid JSON');
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
@@ -111,7 +126,7 @@ final class CodeReviewAgentTest extends TestCase
                 ], JSON_THROW_ON_ERROR)
             );
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
@@ -132,7 +147,7 @@ final class CodeReviewAgentTest extends TestCase
             ->method('generateJson')
             ->willReturn('null');
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
@@ -165,7 +180,7 @@ final class CodeReviewAgentTest extends TestCase
                 ], JSON_THROW_ON_ERROR)
             );
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
@@ -197,7 +212,7 @@ final class CodeReviewAgentTest extends TestCase
                 ], JSON_THROW_ON_ERROR)
             );
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
@@ -229,7 +244,7 @@ final class CodeReviewAgentTest extends TestCase
                 ], JSON_THROW_ON_ERROR)
             );
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
@@ -262,7 +277,7 @@ final class CodeReviewAgentTest extends TestCase
                 ], JSON_THROW_ON_ERROR)
             );
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
@@ -295,7 +310,7 @@ final class CodeReviewAgentTest extends TestCase
                 ], JSON_THROW_ON_ERROR)
             );
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
@@ -328,7 +343,7 @@ final class CodeReviewAgentTest extends TestCase
                 ], JSON_THROW_ON_ERROR)
             );
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessage(
@@ -353,7 +368,7 @@ final class CodeReviewAgentTest extends TestCase
                 ], JSON_THROW_ON_ERROR)
             );
 
-        $agent = new CodeReviewAgent($llm);
+        $agent = $this->createAgent($llm);
 
         $result = $agent->review(
             'test.php',
@@ -363,5 +378,13 @@ final class CodeReviewAgentTest extends TestCase
         self::assertFalse($result->hasFindings());
         self::assertSame(0, $result->count());
         self::assertCount(0, $result->getFindings());
+    }
+
+    private function createAgent(LlmInterface $llm): CodeReviewAgent
+    {
+        return new CodeReviewAgent(
+            $llm,
+            new PromptTemplateLoader(dirname(__DIR__, 3) . '/prompts'),
+        );
     }
 }

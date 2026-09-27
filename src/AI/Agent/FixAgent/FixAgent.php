@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI\Agent\FixAgent;
 
+use App\AI\Agent\PromptTemplateLoader;
 use App\AI\LLM\LlmInterface;
 use App\AI\Review\ReviewResult;
 use RuntimeException;
@@ -12,6 +13,7 @@ final class FixAgent implements FixAgentInterface
 {
     public function __construct(
         private readonly LlmInterface $llm,
+        private readonly PromptTemplateLoader $promptTemplateLoader,
     ) {
     }
 
@@ -78,96 +80,15 @@ the approved review findings and the validation failure.
 FEEDBACK;
         }
 
-        return <<<PROMPT
-You are AI-Code-Fix-Agent, an AI code-fixing agent.
-
-Your job is to apply ONLY the developer-approved review findings listed below.
-
-You MUST NOT perform a new code review.
-
-You MUST NOT discover, diagnose, or fix any issue that is not explicitly listed
-in the approved review findings.
-
-You MUST preserve everything unrelated to the approved findings.
-
-FILE:
-{$filePath}
-
-APPROVED REVIEW FINDINGS:
-{$formattedFindings}
-{$retryFeedback}
-
-ORIGINAL SOURCE:
----BEGIN SOURCE---
-{$sourceCode}
----END SOURCE---
-
-STRICT EDITING RULES:
-
-1. Apply only the approved findings above.
-
-2. Make the smallest possible change required to fix those findings.
-
-3. Preserve all unrelated source code exactly as provided.
-
-4. Do NOT remove, modify, or rewrite comments unless a comment itself is
-   explicitly part of an approved finding.
-
-5. Do NOT add, remove, or move blank lines unless this is strictly required
-   for the approved fix.
-
-6. Do NOT reformat the file.
-
-7. Do NOT change indentation or whitespace outside the exact lines that must
-   change for the approved fix.
-
-8. Do NOT reorder code.
-
-9. Do NOT rename variables, methods, classes, or other identifiers unless
-   explicitly required by an approved finding.
-
-10. Do NOT improve code style.
-
-11. Do NOT make additional security, performance, maintainability, or
-    correctness improvements.
-
-12. Do NOT change imports unless explicitly required by an approved finding.
-
-13. Preserve the original comments, blank lines, formatting, and code structure
-    wherever they are not directly affected by an approved finding.
-
-14. Change tests only when an approved finding specifically identifies a defect
-    in the test file currently being fixed.
-
-15. When changing a test, preserve the behavior and contract it is intended to
-    verify. Do NOT alter expectations or add mock expectations just to match an
-    unrelated production-code change or an assumption not shown in the source.
-    Do NOT make a test expect a dependency interaction unless the code shown
-    actually invokes that dependency on the tested path. If that cannot be
-    verified from this file, do not make that test change.
-
-16. Do NOT catch broad exceptions or replace failures with empty/default-success
-    results unless an approved finding explicitly requires that behavior.
-
-17. For security findings, fix the underlying security boundary. Do NOT add a
-    superficial prefix or regex check while still passing the same untrusted
-    input to a shell or other unsafe execution boundary.
-
-18. Do NOT claim or imply that tests pass; tests are run separately by the
-    workflow.
-
-19. Return the COMPLETE corrected source code.
-
-20. Do NOT return Markdown code fences.
-21. Do NOT return explanations.
-22. Do NOT return a diff.
-
-The output must contain only the complete PHP source code.
-
-Before returning the source, compare it mentally with the original source and
-ensure that every change is directly required by one of the approved findings.
-
-PROMPT;
+        return $this->promptTemplateLoader->render(
+            'fix_agent.txt',
+            [
+                '%%FILE_PATH%%' => $filePath,
+                '%%FORMATTED_FINDINGS%%' => $formattedFindings,
+                '%%RETRY_FEEDBACK%%' => $retryFeedback,
+                '%%SOURCE_CODE%%' => $sourceCode,
+            ],
+        );
     }
 
     /**
