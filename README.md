@@ -16,6 +16,25 @@ The developer remains in control of the workflow at every stage.
 See [docs/coding-standards.md](docs/coding-standards.md) for the project rules
 covering PHP 8.4+, PSR standards, Symfony 8, testing, and secure changes.
 
+## Getting started
+
+The application requires Docker Compose and Git. From the workspace directory
+that contains `docker-compose.yml`:
+
+1. Copy `.env.example` to `.env` and set local database credentials.
+2. Start the services with `docker compose up --build -d`.
+3. Configure `GEMINI_API_KEY` and `GEMINI_MODEL` in `app/.env.local`. Do not
+   commit this file or expose the API key.
+4. If dependencies are not already installed, run
+   `docker exec agents_system composer install`.
+
+The application is served at `http://localhost:8080`, phpMyAdmin at
+`http://localhost:8081`, and MySQL is exposed on `127.0.0.1:3307` by default.
+These ports can be changed with the variables in the workspace `.env` file.
+
+The PHP container is named `agents_system`; application commands below are run
+from `/var/www/app` inside that container.
+
 ---
 
 # Architecture
@@ -253,6 +272,10 @@ the findings for a new commit. If GitHub reports that the workflow token is not
 allowed to resolve threads, configure the optional `AI_REVIEW_TOKEN` repository
 secret with a maintainer token that has pull-request write access. The review
 itself can still complete when thread resolution is unavailable.
+
+The workflows are in `.github/workflows/ai-code-review.yml` and
+`.github/workflows/ai-code-fix.yml`. They use `GEMINI_API_KEY` as a repository
+secret and `GEMINI_MODEL` as a repository variable.
 
 ---
 
@@ -546,13 +569,13 @@ The project intentionally keeps this normalization narrow rather than attempting
 Review PHP changes between two Git references:
 
 ```bash
-php bin/console ai:review HEAD~1 HEAD
+docker exec agents_system php bin/console ai:review HEAD~1 HEAD
 ```
 
 Example:
 
 ```bash
-php bin/console ai:review main HEAD
+docker exec agents_system php bin/console ai:review main HEAD
 ```
 
 The workflow identifies changed PHP files and reviews each file independently.
@@ -564,19 +587,19 @@ The workflow identifies changed PHP files and reviews each file independently.
 Run the fix workflow for a specific Git range:
 
 ```bash
-php bin/console ai:fix HEAD~1 HEAD
+docker exec agents_system php bin/console ai:fix HEAD~1 HEAD
 ```
 
 The workflow can also be executed with explicit approval:
 
 ```bash
-php bin/console ai:fix HEAD~1 HEAD --approved
+docker exec agents_system php bin/console ai:fix HEAD~1 HEAD --approved
 ```
 
 When using an existing persisted review:
 
 ```bash
-php bin/console ai:fix HEAD~1 HEAD --approved --review-file=ai-review/review-result.json
+docker exec agents_system php bin/console ai:fix HEAD~1 HEAD --approved --review-file=ai-review/review-result.json
 ```
 
 The fix workflow:
@@ -603,7 +626,7 @@ fixtures/test1.php
 The developer can first run:
 
 ```bash
-php bin/console ai:review HEAD~1 HEAD
+docker exec agents_system php bin/console ai:review HEAD~1 HEAD
 ```
 
 The AI-Code-Review-Agent may produce:
@@ -618,7 +641,7 @@ return type and returning an empty string.
 After reviewing the findings, the developer can explicitly approve the fix:
 
 ```bash
-php bin/console ai:fix HEAD~1 HEAD --approved
+docker exec agents_system php bin/console ai:fix HEAD~1 HEAD --approved
 ```
 
 AI-Code-Fix-Agent generates the corrected source.
@@ -691,45 +714,19 @@ If any required validation fails, the source is not committed.
 
 # Project Structure
 
-The project separates Git integration, AI agents, LLM providers, file handling, validation, review models, and workflows.
+The application separates agents, Git integration, LLM providers, file
+handling, review models, workflows, and Symfony commands. Prompt templates are
+plain text and loaded by `PromptTemplateLoader`.
 
-Conceptually:
-
-```text
-src/
-├── AI/
-│   ├── Agent/
-│   │   ├── CodeReviewAgent/
-│   │   └── FixAgent/
-│   │
-│   ├── File/
-│   │   ├── SourceFileProvider
-│   │   └── PhpSourceValidator
-│   │
-│   ├── Git/
-│   │   ├── GitClient
-│   │   ├── GitCommandRunner
-│   │   └── GitCommandRunnerInterface
-│   │
-│   ├── LLM/
-│   │   ├── LlmInterface
-│   │   └── GeminiLlm
-│   │
-│   ├── Review/
-│   │   ├── ReviewResult
-│   │   └── ReviewFinding
-│   │
-│   └── Workflow/
-│       ├── CodeReviewWorkflow
-│       └── FixWorkflow
-│
-└── Command/
-    ├── AiReviewCommand
-    └── AiFixCommand
-```
-
-The exact project structure may evolve as additional providers and languages are introduced.
-
+- `src/AI/Agent/`: code review and fix agents, plus prompt loading
+- `src/AI/File/`: source-file access and PHP validation
+- `src/AI/Git/`: Git change detection and command execution
+- `src/AI/LLM/`: the LLM interface and Gemini implementation
+- `src/AI/Review/`: review findings, results, and serialization
+- `src/AI/Workflow/`: review and fix orchestration
+- `src/Command/`: Symfony console commands
+- `prompts/`: `code_review.txt` and `fix_agent.txt`
+- `tests/`: automated unit and workflow tests
 ---
 
 # Testing
@@ -751,22 +748,17 @@ The project contains automated tests covering:
 * Symfony service configuration
 * GitHub-oriented workflow behavior
 
-Run the complete test suite:
+Run the complete test suite in the PHP container:
 
 ```bash
-php ./bin/phpunit tests/ --display-all-issues
+docker exec agents_system php ./bin/phpunit tests/ --display-all-issues
 ```
 
-The latest local test result is:
+Check Symfony service wiring with:
 
-```text
-76 tests
-333 assertions
-0 failures
-0 errors
+```bash
+docker exec agents_system php bin/console lint:container
 ```
-
-The complete test suite passes successfully.
 
 ---
 
@@ -783,7 +775,7 @@ agents_system
 Examples:
 
 ```bash
-docker exec agents_system php -l src/AI/LLM/GeminiLlm.php
+docker exec agents_system php bin/console ai:review HEAD~1 HEAD
 ```
 
 ```bash
@@ -803,7 +795,9 @@ GEMINI_API_KEY
 GEMINI_MODEL
 ```
 
-The API key is supplied through environment configuration or GitHub Actions secrets.
+For local development, set these in `app/.env.local`. In GitHub Actions, set
+`GEMINI_API_KEY` as a repository secret and `GEMINI_MODEL` as a repository
+variable.
 
 The Gemini model can be configured independently from the application code.
 
