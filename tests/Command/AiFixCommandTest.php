@@ -69,6 +69,7 @@ final class AiFixCommandTest extends TestCase
         }
     }
 }
+
 JSON;
 
         file_put_contents(
@@ -111,6 +112,52 @@ JSON;
             if (is_file($reviewFile)) {
                 unlink($reviewFile);
             }
+        }
+    }
+
+    public function testItRejectsPersistedReviewBoundToHeadWhenTargetDiffers(): void
+    {
+        $codeReviewWorkflow = $this->createMock(CodeReviewWorkflowInterface::class);
+        $codeReviewWorkflow
+            ->expects(self::never())
+            ->method('reviewChanges');
+
+        $fixWorkflow = $this->createMock(FixWorkflowInterface::class);
+        $fixWorkflow
+            ->expects(self::never())
+            ->method('fix');
+
+        $reviewFile = tempnam(sys_get_temp_dir(), 'ai-review-');
+        self::assertNotFalse($reviewFile);
+
+        file_put_contents($reviewFile, json_encode([
+            'commit_sha' => 'HEAD',
+            'reviews' => [],
+        ], JSON_THROW_ON_ERROR));
+
+        try {
+            $command = new AiFixCommand(
+                $codeReviewWorkflow,
+                new ReviewResultSerializer(),
+                $fixWorkflow,
+            );
+            $application = new Application();
+            $application->addCommand($command);
+            $commandTester = new CommandTester($application->find('ai:fix'));
+
+            $this->expectException(\RuntimeException::class);
+            $this->expectExceptionMessage(
+                'Review result belongs to commit "HEAD", but the current fix target is "TARGET_SHA".',
+            );
+
+            $commandTester->execute([
+                'from' => 'FROM_SHA',
+                'to' => 'TARGET_SHA',
+                '--approved' => true,
+                '--review-file' => $reviewFile,
+            ]);
+        } finally {
+            unlink($reviewFile);
         }
     }
 }

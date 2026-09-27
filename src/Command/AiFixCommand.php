@@ -264,10 +264,7 @@ final class AiFixCommand extends Command
 
         $reviewCommitSha = $result['commit_sha'];
 
-        if (
-            $reviewCommitSha !== $expectedCommitSha
-            && $reviewCommitSha !== 'HEAD'
-        ) {
+        if ($reviewCommitSha !== $expectedCommitSha) {
             throw new \RuntimeException(
                 sprintf(
                     'Review result belongs to commit "%s", but the current fix target is "%s".',

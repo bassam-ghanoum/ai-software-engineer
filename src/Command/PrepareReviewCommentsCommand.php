@@ -151,7 +151,7 @@ final class PrepareReviewCommentsCommand extends Command
             );
         }
 
-        if (file_put_contents($file, $content) === false) {
+        if (file_put_contents($file, $content) !== strlen($content)) {
             throw new \RuntimeException(
                 sprintf('Failed to write output file: %s', $file),
             );

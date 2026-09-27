@@ -53,9 +53,9 @@ final class ValidateReviewResultCommand extends Command
     ): int {
         $file = (string) $input->getArgument('file');
         $commitShaOption = $input->getOption('commit-sha');
-        $expectedCommitSha = $commitShaOption !== null ? (string) $commitShaOption : null;
+        $expectedCommitSha = $commitShaOption !== null ? (string) $commitShaOption : '';
         $baseShaOption = $input->getOption('base-sha');
-        $expectedBaseSha = $baseShaOption !== null ? (string) $baseShaOption : null;
+        $expectedBaseSha = $baseShaOption !== null ? (string) $baseShaOption : '';
         try {
             $findingsCount = $this->validator->validate(
                 $file,
