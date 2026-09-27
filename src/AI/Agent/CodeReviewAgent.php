@@ -10,6 +10,8 @@ use App\AI\Review\ReviewResult;
 
 final class CodeReviewAgent implements CodeReviewAgentInterface
 {
+    private const TEMPLATE_NAME = 'code_review.txt';
+
     public function __construct(
         private readonly LlmInterface $llm,
         private readonly PromptTemplateLoader $promptTemplateLoader,
@@ -29,7 +31,7 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
         }
 
             $prompt = $this->promptTemplateLoader->render(
-                'code_review.txt',
+                self::TEMPLATE_NAME,
                 [
                 '%%FILE_PATH%%' => $filePath,
                 '%%CODE%%' => $code,

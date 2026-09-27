@@ -11,6 +11,8 @@ use RuntimeException;
 
 final class FixAgent implements FixAgentInterface
 {
+    private const TEMPLATE_NAME = 'fix_agent.txt';
+
     public function __construct(
         private readonly LlmInterface $llm,
         private readonly PromptTemplateLoader $promptTemplateLoader,
@@ -81,7 +83,7 @@ FEEDBACK;
         }
 
         return $this->promptTemplateLoader->render(
-            'fix_agent.txt',
+            self::TEMPLATE_NAME,
             [
                 '%%FILE_PATH%%' => $filePath,
                 '%%FORMATTED_FINDINGS%%' => $formattedFindings,
