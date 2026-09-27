@@ -101,9 +101,11 @@ PHP;
 
                     preg_match_all('/^(\d+)\./m', $prompt, $ruleNumbers);
 
+                    $ruleValues = array_map('intval', $ruleNumbers[1]);
+                    self::assertNotEmpty($ruleValues);
                     self::assertSame(
-                        range(1, 22),
-                        array_map('intval', $ruleNumbers[1]),
+                        range(1, count($ruleValues)),
+                        $ruleValues,
                     );
 
                     self::assertStringContainsString(

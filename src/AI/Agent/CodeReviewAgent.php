@@ -30,13 +30,13 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
             throw new \InvalidArgumentException('The code cannot be empty.');
         }
 
-            $prompt = $this->promptTemplateLoader->render(
-                self::TEMPLATE_NAME,
-                [
+        $prompt = $this->promptTemplateLoader->render(
+            self::TEMPLATE_NAME,
+            [
                 '%%FILE_PATH%%' => $filePath,
                 '%%CODE%%' => $code,
-                ],
-            );
+            ],
+        );
 
         $json = $this->llm->generateJson($prompt);
 

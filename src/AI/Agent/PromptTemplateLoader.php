@@ -20,7 +20,7 @@ final class PromptTemplateLoader
     {
         $templatePath = $this->promptsDirectory
             . DIRECTORY_SEPARATOR
-            . $templateName;
+            . basename($templateName);
 
         if (!is_file($templatePath) || !is_readable($templatePath)) {
             throw new RuntimeException(
