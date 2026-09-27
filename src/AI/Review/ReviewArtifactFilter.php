@@ -41,6 +41,9 @@ final class ReviewArtifactFilter
         $removed = 0;
 
         foreach ($validatedReviews as $filePath => $reviewResult) {
+            if (!isset($data['reviews'][$filePath]['findings']) || !is_array($data['reviews'][$filePath]['findings']) || !isset($deserialized['reviews'][$filePath])) {
+                continue;
+            }
             $originalFindings = $data['reviews'][$filePath]['findings'];
             $unresolvedFindings = [];
 
@@ -49,6 +52,10 @@ final class ReviewArtifactFilter
 
                 if (isset($resolvedFingerprints[$fingerprint])) {
                     $removed++;
+                    continue;
+                }
+
+                if (!isset($originalFindings[$index])) {
                     continue;
                 }
 

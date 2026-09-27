@@ -175,6 +175,6 @@ final class GeminiLlm implements LlmInterface
             return;
         }
 
-        sleep($this->retryDelay * (2 ** $attempt));
+        sleep(min(60, $this->retryDelay * (2 ** $attempt)));
     }
 }
