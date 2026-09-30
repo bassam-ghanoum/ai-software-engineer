@@ -1,4 +1,4 @@
-# 2 Agents AI Software Engineer
+# AI Software Engineer
 
 An AI-powered code review and code fixing workflow built with **PHP, Symfony, Docker, Git, GitHub Actions, and Gemini**.
 

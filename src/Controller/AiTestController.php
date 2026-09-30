@@ -25,7 +25,7 @@ function getUser(int $id): array
 }
 PHP;
 
-        $review = $agent->review($code);
+        $review = $agent->review(__FILE__, $code);
 
         $output = [
             'findings_count' => $review->count(),

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Command;
 
 use App\AI\Agent\FixAgent\FixResult;
+use App\AI\Git\GitInterface;
 use App\AI\Review\ReviewResultSerializer;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use App\AI\Workflow\FixWorkflowInterface;
@@ -82,6 +83,7 @@ JSON;
                 $codeReviewWorkflow,
                 $serializer,
                 $fixWorkflow,
+                $this->createStub(GitInterface::class),
             );
 
             $application = new Application();
@@ -140,6 +142,7 @@ JSON;
                 $codeReviewWorkflow,
                 new ReviewResultSerializer(),
                 $fixWorkflow,
+                $this->createStub(GitInterface::class),
             );
             $application = new Application();
             $application->addCommand($command);

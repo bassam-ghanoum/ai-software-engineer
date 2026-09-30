@@ -62,6 +62,8 @@ final class ReviewCommentPreparer
                     'side' => 'RIGHT',
                     'body' => $this->buildBody(
                         $fingerprint,
+                        $path,
+                        $finding->getLine(),
                         $finding,
                     ),
                 ];
@@ -133,10 +135,18 @@ final class ReviewCommentPreparer
 
     private function buildBody(
         string $fingerprint,
+        string $filePath,
+        int $line,
         ReviewFinding $finding,
     ): string {
         $body = "### 🤖 AI Code Review\n\n";
         $body .= "<!-- ai-code-review-fingerprint:" . $fingerprint . " -->\n\n";
+        $safeFilePath = str_replace(
+            ['`', "\r", "\n"],
+            ['\\`', ' ', ' '],
+            $filePath,
+        );
+        $body .= sprintf("**File:** `%s` | **Line:** %d\n\n", $safeFilePath, $line);
         $body .= sprintf(
             "**%s** · `%s`\n\n",
             strtoupper($finding->getSeverity()),

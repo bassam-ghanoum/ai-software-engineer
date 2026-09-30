@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Command;
 
+use App\AI\Git\GitInterface;
 use App\AI\Review\ReviewResultSerializer;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use App\AI\Workflow\FixWorkflowInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Symfony\Component\Console\Helper\QuestionHelper;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -26,6 +28,7 @@ final class AiFixCommand extends Command
         private readonly CodeReviewWorkflowInterface $codeReviewWorkflow,
         private readonly ReviewResultSerializer $serializer,
         private readonly FixWorkflowInterface $fixWorkflow,
+        private readonly GitInterface $git,
     ) {
         parent::__construct();
     }
@@ -179,6 +182,13 @@ final class AiFixCommand extends Command
 
             return Command::SUCCESS;
         }
+
+        $this->git->assertWorkingTreeMatchesRevision($to);
+
+        $output->writeln(sprintf(
+            '<info>Working tree matches target revision %s.</info>',
+            OutputFormatter::escape($to),
+        ));
 
         $output->writeln('');
         $output->writeln(

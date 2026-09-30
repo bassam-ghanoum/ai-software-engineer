@@ -17,4 +17,6 @@ interface GitInterface
     public function readFile(string $path): string;
 
     public function readFileAtRevision(string $path, string $revision): string;
+
+    public function assertWorkingTreeMatchesRevision(string $revision): void;
 }

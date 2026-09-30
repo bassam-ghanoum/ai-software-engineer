@@ -96,4 +96,33 @@ final class GitClient implements GitInterface
 
         return $result['output'];
     }
+
+    public function assertWorkingTreeMatchesRevision(string $revision): void
+    {
+        $result = $this->commandRunner->run([
+            'git',
+            'diff',
+            '--quiet',
+            '--no-ext-diff',
+            '--no-textconv',
+            '--end-of-options',
+            $revision,
+            '--',
+        ]);
+
+        if ($result['exitCode'] === 1) {
+            throw new \RuntimeException(sprintf(
+                'The working tree does not match target revision "%s". Refusing to apply fixes.',
+                $revision,
+            ));
+        }
+
+        if ($result['exitCode'] !== 0) {
+            throw new \RuntimeException(sprintf(
+                'Failed to compare the working tree with revision "%s": %s',
+                $revision,
+                trim($result['errorOutput']),
+            ));
+        }
+    }
 }
