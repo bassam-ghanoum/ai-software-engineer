@@ -47,7 +47,9 @@ PHP;
             '<pre>' . htmlspecialchars(
                 json_encode(
                     $output,
-                    JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
+                    JSON_PRETTY_PRINT
+                    | JSON_UNESCAPED_SLASHES
+                    | JSON_THROW_ON_ERROR
                 )
             ) . '</pre>'
         );

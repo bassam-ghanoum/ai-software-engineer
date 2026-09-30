@@ -40,6 +40,13 @@ final class ReviewCommentPreparer
         $general = [];
 
         foreach ($result['reviews'] as $file => $review) {
+            if (!$review instanceof ReviewResult) {
+                throw new RuntimeException(sprintf(
+                    'Review for file "%s" is not a valid ReviewResult.',
+                    (string) $file,
+                ));
+            }
+
             $path = ltrim($file, '/');
             $fileChangedLines = $changedLines[$path] ?? [];
 
@@ -130,7 +137,11 @@ final class ReviewCommentPreparer
     {
         $normalized = preg_replace('/\s+/', ' ', strtolower(trim($value)));
 
-        return $normalized ?? strtolower(trim($value));
+        if ($normalized === null) {
+            throw new RuntimeException('Unable to normalize review text.');
+        }
+
+        return $normalized;
     }
 
     private function buildBody(

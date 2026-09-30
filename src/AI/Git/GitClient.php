@@ -75,9 +75,17 @@ final class GitClient implements GitInterface
 
     public function readFileAtRevision(string $path, string $revision): string
     {
-        if (preg_match('/[^a-zA-Z0-9_\-\.\/]/', $revision) === 1 || preg_match('/[\x00-\x1F\x7F]/', $path) === 1) {
-            throw new \InvalidArgumentException('Invalid path or revision parameter.');
+        if (
+            trim($revision) === ''
+            || str_contains($revision, ':')
+            || preg_match('/[\x00-\x1F\x7F]/', $revision) === 1
+        ) {
+            throw new \InvalidArgumentException(
+                'Git revisions must be non-empty, contain no control characters, and contain no colon.',
+            );
         }
+
+        $this->validateGitPath($path);
 
         $fileSpec = sprintf('%s:%s', $revision, $path);
         $command = ['git', 'show', '--end-of-options', $fileSpec];
@@ -95,6 +103,25 @@ final class GitClient implements GitInterface
         }
 
         return $result['output'];
+    }
+
+    private function validateGitPath(string $path): void
+    {
+        if (
+            $path === ''
+            || str_starts_with($path, '/')
+            || str_starts_with($path, '\\')
+            || preg_match('/^[a-zA-Z]:/', $path) === 1
+            || preg_match('/[\x00-\x1F\x7F]/', $path) === 1
+        ) {
+            throw new \InvalidArgumentException('Invalid repository-relative Git path.');
+        }
+
+        foreach (explode('/', $path) as $segment) {
+            if ($segment === '' || $segment === '.' || $segment === '..') {
+                throw new \InvalidArgumentException('Invalid repository-relative Git path.');
+            }
+        }
     }
 
     public function assertWorkingTreeMatchesRevision(string $revision): void
