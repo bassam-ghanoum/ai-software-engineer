@@ -259,7 +259,18 @@ final class AiFixCommand extends Command
             );
         }
 
-        $json = file_get_contents($reviewFile);
+        try {
+            $json = file_get_contents($reviewFile);
+        } catch (\Throwable $e) {
+            throw new \RuntimeException(
+                sprintf(
+                    'Failed to read review result file: %s',
+                    $reviewFile,
+                ),
+                0,
+                $e
+            );
+        }
 
         if ($json === false) {
             throw new \RuntimeException(
