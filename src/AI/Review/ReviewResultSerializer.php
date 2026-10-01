@@ -4,25 +4,23 @@ declare(strict_types=1);
 
 namespace App\AI\Review;
 
+use App\AI\Review\DTO\ReviewArtifact;
+use App\AI\Review\DTO\ReviewBatch;
+
 final class ReviewResultSerializer
 {
-    /**
-     * @param array<string, ReviewResult> $reviews
-     */
-    public function serialize(array $reviews, string $commitSha): string
+    public function serialize(ReviewArtifact $artifact): string
     {
-        if (trim($commitSha) === '') {
-            throw new \InvalidArgumentException(
-                'Commit SHA cannot be empty.'
-            );
-        }
-
         $data = [
-            'commit_sha' => $commitSha,
+            'commit_sha' => $artifact->commitSha,
             'reviews' => [],
         ];
 
-        foreach ($reviews as $filePath => $reviewResult) {
+        if ($artifact->baseSha !== null) {
+            $data['base_sha'] = $artifact->baseSha;
+        }
+
+        foreach ($artifact->reviews as $filePath => $reviewResult) {
             if (!$reviewResult instanceof ReviewResult) {
                 throw new \InvalidArgumentException(
                     sprintf(
@@ -64,12 +62,8 @@ final class ReviewResultSerializer
     }
 
     /**
-     * @return array{
-     *     commit_sha: string,
-     *     reviews: array<string, ReviewResult>
-     * }
      */
-    public function deserialize(string $json): array
+    public function deserialize(string $json): ReviewArtifact
     {
         try {
             $data = json_decode(
@@ -219,9 +213,12 @@ final class ReviewResultSerializer
             $reviews[$filePath] = new ReviewResult($findings);
         }
 
-        return [
-            'commit_sha' => $data['commit_sha'],
-            'reviews' => $reviews,
-        ];
+        $baseSha = $data['base_sha'] ?? null;
+
+        return new ReviewArtifact(
+            $data['commit_sha'],
+            new ReviewBatch($reviews),
+            is_string($baseSha) && trim($baseSha) !== '' ? $baseSha : null,
+        );
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI\Git;
 
+use App\AI\Git\DTO\GitCommandResult;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -11,9 +12,8 @@ final class GitCommandRunner implements GitCommandRunnerInterface
 {
     /**
      * @param list<string> $command
-     * @return array{output: string, errorOutput: string, exitCode: int}
      */
-    public function run(array $command): array
+    public function run(array $command): GitCommandResult
     {
         if ($command === [] || $command[0] === '') {
             throw new InvalidArgumentException('Command must include an executable.');
@@ -88,10 +88,6 @@ final class GitCommandRunner implements GitCommandRunnerInterface
             }
         }
 
-        return [
-            'output' => $output,
-            'errorOutput' => $errorOutput,
-            'exitCode' => $exitCode,
-        ];
+        return new GitCommandResult($output, $errorOutput, $exitCode);
     }
 }

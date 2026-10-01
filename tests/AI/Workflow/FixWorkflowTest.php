@@ -9,6 +9,7 @@ use App\AI\Agent\FixAgent\FixScopeValidatorInterface;
 use App\AI\File\SourceFileProviderInterface;
 use App\AI\File\SourceValidatorInterface;
 use App\AI\Review\ReviewFinding;
+use App\AI\Review\DTO\ReviewBatch;
 use App\AI\Review\ReviewResult;
 use App\AI\Workflow\FixWorkflow;
 use InvalidArgumentException;
@@ -56,9 +57,9 @@ final class FixWorkflowTest extends TestCase
         ]);
 
         $result = $workflow->fix(
-            [
+            new ReviewBatch([
                 'src/Test.php' => $review,
-            ],
+            ]),
             false,
         );
 
@@ -141,9 +142,9 @@ PHP;
         );
 
         $result = $workflow->fix(
-            [
+            new ReviewBatch([
                 'src/Test.php' => $review,
-            ],
+            ]),
             true,
         );
 
@@ -154,7 +155,7 @@ PHP;
             [
                 'src/Test.php' => $fixedSource,
             ],
-            $result->getFixedFiles(),
+            iterator_to_array($result->getFixedFiles()),
         );
     }
 
@@ -189,9 +190,9 @@ PHP;
         );
 
         $result = $workflow->fix(
-            [
+            new ReviewBatch([
                 'src/Test.php' => new ReviewResult([]),
-            ],
+            ]),
             true,
         );
 
@@ -248,9 +249,9 @@ PHP;
         );
 
         $result = $workflow->fix(
-            [
+            new ReviewBatch([
                 'src/Test.php' => $review,
-            ],
+            ]),
             true,
         );
 
@@ -310,9 +311,9 @@ PHP;
         );
 
         $workflow->fix(
-            [
+            new ReviewBatch([
                 'src/Missing.php' => $review,
-            ],
+            ]),
             true,
         );
     }
@@ -432,10 +433,10 @@ PHP;
         );
 
         $result = $workflow->fix(
-            [
+            new ReviewBatch([
                 'src/One.php' => $review1,
                 'src/Two.php' => $review2,
-            ],
+            ]),
             true,
         );
 
@@ -447,7 +448,7 @@ PHP;
                 'src/One.php' => $fixedSource1,
                 'src/Two.php' => $fixedSource2,
             ],
-            $result->getFixedFiles(),
+            iterator_to_array($result->getFixedFiles()),
         );
     }
 
@@ -518,9 +519,9 @@ PHP;
         $this->expectExceptionMessage('Invalid PHP source.');
 
         $workflow->fix(
-            [
+            new ReviewBatch([
                 'src/Test.php' => $review,
-            ],
+            ]),
             true,
         );
     }
@@ -580,10 +581,10 @@ PHP;
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('Second file is invalid.');
 
-        $workflow->fix([
+        $workflow->fix(new ReviewBatch([
             'src/One.php' => $review,
             'src/Two.php' => $review,
-        ], true);
+        ]), true);
     }
 
     public function testFixIsRejectedWhenScopeValidatorFails(): void
@@ -684,9 +685,9 @@ PHP;
         );
 
         $workflow->fix(
-            [
+            new ReviewBatch([
                 'fixtures/test1.php' => $reviewResult,
-            ],
+            ]),
             true,
         );
     }

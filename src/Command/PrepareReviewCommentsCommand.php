@@ -75,24 +75,24 @@ final class PrepareReviewCommentsCommand extends Command
 
         $this->writeJson(
             (string) $input->getOption('changed-lines-output'),
-            $prepared['changed_lines'],
+            $prepared->changedLines,
         );
         $this->writeJson(
             (string) $input->getOption('inline-output'),
-            $prepared['inline'],
+            $prepared->inline,
         );
         $this->writeJson(
             (string) $input->getOption('general-output'),
-            $prepared['general'],
+            $prepared->general,
         );
 
         $output->writeln(sprintf(
             '<info>Prepared %d inline finding(s).</info>',
-            count($prepared['inline']),
+            count($prepared->inline),
         ));
         $output->writeln(sprintf(
             '<info>Prepared %d general finding(s).</info>',
-            count($prepared['general']),
+            count($prepared->general),
         ));
 
         return Command::SUCCESS;

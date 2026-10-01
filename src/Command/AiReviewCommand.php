@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\AI\Review\ReviewResultSerializer;
+use App\AI\Review\DTO\ReviewArtifact;
+use App\AI\Review\DTO\ReviewBatch;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -69,15 +71,14 @@ final class AiReviewCommand extends Command
             $to,
         );
 
-        if ($results === []) {
+        if ($results->isEmpty()) {
             $output->writeln(
                 '<comment>No changed PHP files found.</comment>'
             );
 
             if ($outputPath !== null) {
                 $serialized = $this->serializer->serialize(
-                    [],
-                    $to,
+                    new ReviewArtifact($to, new ReviewBatch([])),
                 );
 
                 $this->writeReviewResult(
@@ -131,8 +132,7 @@ final class AiReviewCommand extends Command
 
         if ($outputPath !== null) {
             $serialized = $this->serializer->serialize(
-                $results,
-                $to,
+                new ReviewArtifact($to, $results),
             );
 
             $this->writeReviewResult(

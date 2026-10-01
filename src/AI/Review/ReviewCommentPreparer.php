@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\AI\Review;
 
+use App\AI\Review\DTO\ChangedLineNumbers;
+use App\AI\Review\DTO\ReviewComment;
+use App\AI\Review\DTO\ReviewCommentCollection;
+use App\AI\Review\DTO\ReviewCommentPreparationResult;
 use RuntimeException;
 
 final class ReviewCommentPreparer
@@ -16,45 +20,28 @@ final class ReviewCommentPreparer
     ) {
     }
 
-    /**
-     * @return array{
-    *     changed_lines: array<string, array<int, bool>>,
-     *     inline: array<int, array<string, mixed>>,
-     *     general: array<int, array<string, mixed>>
-     * }
-     */
     public function prepare(
         string $reviewJson,
         string $changedDiff,
-    ): array {
+    ): ReviewCommentPreparationResult {
         $result = $this->serializer->deserialize($reviewJson);
-
-        if (!isset($result['reviews']) || !is_array($result['reviews'])) {
-            throw new RuntimeException(
-                'Review results do not contain a valid reviews structure.',
-            );
-        }
 
         $changedLines = $this->changedLinesParser->parse($changedDiff);
         $inline = [];
         $general = [];
 
-        foreach ($result['reviews'] as $file => $review) {
-            if (!$review instanceof ReviewResult) {
-                throw new RuntimeException(sprintf(
-                    'Review for file "%s" is not a valid ReviewResult.',
-                    (string) $file,
-                ));
-            }
-
+        foreach ($result->reviews as $file => $review) {
             $path = ltrim($file, '/');
-            $fileChangedLines = $changedLines[$path] ?? [];
+            $fileChangedLines = $changedLines->getFile($path)
+                ?? new ChangedLineNumbers([]);
 
             foreach ($review->getFindings() as $finding) {
-                $inlineLine = $this->findInlineLine(
-                    $fileChangedLines,
-                    $finding->getLine(),
-                );
+                $inlineLine = $fileChangedLines->contains($finding->getLine())
+                    ? $finding->getLine()
+                    : $fileChangedLines->nearestTo(
+                        $finding->getLine(),
+                        self::MAX_INLINE_LINE_DISTANCE,
+                    );
                 $fingerprint = $this->fingerprint(
                     $path,
                     $finding->getCategory(),
@@ -62,64 +49,44 @@ final class ReviewCommentPreparer
                     $finding->getSuggestion(),
                 );
 
-                $comment = [
-                    'fingerprint' => $fingerprint,
-                    'path' => $path,
-                    'line' => $inlineLine ?? $finding->getLine(),
-                    'side' => 'RIGHT',
-                    'body' => $this->buildBody(
-                        $fingerprint,
-                        $path,
-                        $finding->getLine(),
-                        $finding,
-                    ),
-                ];
+                $body = $this->buildBody(
+                    $fingerprint,
+                    $path,
+                    $finding->getLine(),
+                    $finding,
+                );
 
                 if ($inlineLine !== null) {
-                    $inline[] = $comment;
+                    $inline[] = new ReviewComment(
+                        $fingerprint,
+                        $path,
+                        $inlineLine,
+                        'RIGHT',
+                        $body,
+                    );
                     continue;
                 }
 
-                $comment['body'] =
+                $body =
                     "Notice: This finding points to a line that was not changed "
                     . "in this pull request, so it is shown as a general comment.\n\n"
-                    . $comment['body'];
+                    . $body;
 
-                $general[] = $comment;
+                $general[] = new ReviewComment(
+                    $fingerprint,
+                    $path,
+                    $finding->getLine(),
+                    'RIGHT',
+                    $body,
+                );
             }
         }
 
-        return [
-            'changed_lines' => $changedLines,
-            'inline' => $inline,
-            'general' => $general,
-        ];
-    }
-
-    /**
-     * @param array<int, bool> $changedLines
-     */
-    private function findInlineLine(array $changedLines, int $findingLine): ?int
-    {
-        if (isset($changedLines[$findingLine])) {
-            return $findingLine;
-        }
-
-        $nearestLine = null;
-        $nearestDistance = self::MAX_INLINE_LINE_DISTANCE + 1;
-
-        foreach ($changedLines as $line => $_) {
-            $distance = abs($line - $findingLine);
-
-            if ($distance < $nearestDistance) {
-                $nearestLine = $line;
-                $nearestDistance = $distance;
-            }
-        }
-
-        return $nearestDistance <= self::MAX_INLINE_LINE_DISTANCE
-            ? $nearestLine
-            : null;
+        return new ReviewCommentPreparationResult(
+            $changedLines,
+            new ReviewCommentCollection($inline),
+            new ReviewCommentCollection($general),
+        );
     }
 
     private function fingerprint(

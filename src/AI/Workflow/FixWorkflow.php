@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace App\AI\Workflow;
 
 use App\AI\Agent\FixAgent\FixAgentInterface;
+use App\AI\Agent\FixAgent\DTO\FixedFiles;
 use App\AI\Agent\FixAgent\FixResult;
 use App\AI\Agent\FixAgent\FixScopeValidatorInterface;
 use App\AI\File\SourceFileProviderInterface;
 use App\AI\File\SourceValidatorInterface;
+use App\AI\Review\DTO\ReviewBatch;
 use App\AI\Review\ReviewResult;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;
@@ -31,14 +33,13 @@ final class FixWorkflow implements FixWorkflowInterface
     /**
      * Apply fixes one file at a time, only after explicit developer approval.
      *
-     * @param array<string, ReviewResult> $reviews
      */
     public function fix(
-        array $reviews,
+        ReviewBatch $reviews,
         bool $developerApproved,
     ): FixResult {
         if (!$developerApproved) {
-            return new FixResult([]);
+            return new FixResult(new FixedFiles([]));
         }
 
         $validatedFiles = [];
@@ -69,7 +70,7 @@ final class FixWorkflow implements FixWorkflowInterface
             $fixedFiles[$filePath] = $fixedSource;
         }
 
-        return new FixResult($fixedFiles);
+        return new FixResult(new FixedFiles($fixedFiles));
     }
 
     private function prepareFix(

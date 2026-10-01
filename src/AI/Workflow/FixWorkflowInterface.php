@@ -5,15 +5,12 @@ declare(strict_types=1);
 namespace App\AI\Workflow;
 
 use App\AI\Agent\FixAgent\FixResult;
-use App\AI\Review\ReviewResult;
+use App\AI\Review\DTO\ReviewBatch;
 
 interface FixWorkflowInterface
 {
-    /**
-     * @param array<string, ReviewResult> $reviews
-     */
     public function fix(
-        array $reviews,
+        ReviewBatch $reviews,
         bool $developerApproved,
     ): FixResult;
 }

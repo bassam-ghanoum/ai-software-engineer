@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\AI\Git;
 
 use App\AI\Git\GitClient;
+use App\AI\Git\DTO\GitCommandResult;
 use App\AI\Git\GitCommandRunnerInterface;
 use PHPUnit\Framework\TestCase;
 
@@ -33,11 +34,11 @@ final class GitClientTest extends TestCase
                     '*.php',
                 ],
             )
-            ->willReturn([
-                'output' => "src/Foo.php\0src/Bar.php\0\0  src/Baz.php  \0src/Multi\nLine.php\0",
-                'errorOutput' => '',
-                'exitCode' => 0,
-            ]);
+            ->willReturn(new GitCommandResult(
+                "src/Foo.php\0src/Bar.php\0\0  src/Baz.php  \0src/Multi\nLine.php\0",
+                '',
+                0,
+            ));
 
         $client = new GitClient($commandRunner);
 
@@ -53,7 +54,7 @@ final class GitClientTest extends TestCase
                 '  src/Baz.php  ',
                 "src/Multi\nLine.php",
             ],
-            $result,
+            iterator_to_array($result),
         );
     }
 
@@ -66,11 +67,7 @@ final class GitClientTest extends TestCase
         $commandRunner
             ->expects(self::once())
             ->method('run')
-            ->willReturn([
-                'output' => '',
-                'errorOutput' => 'bad revision',
-                'exitCode' => 128,
-            ]);
+            ->willReturn(new GitCommandResult('', 'bad revision', 128));
 
         $client = new GitClient($commandRunner);
 
@@ -116,11 +113,11 @@ final class GitClientTest extends TestCase
             ->expects(self::once())
             ->method('run')
             ->with(['git', 'show', '--end-of-options', 'HEAD:src/Foo.php'])
-            ->willReturn([
-                'output' => "<?php\nreturn 'target revision';\n",
-                'errorOutput' => '',
-                'exitCode' => 0,
-            ]);
+            ->willReturn(new GitCommandResult(
+                "<?php\nreturn 'target revision';\n",
+                '',
+                0,
+            ));
 
         $client = new GitClient($commandRunner);
 
@@ -140,11 +137,7 @@ final class GitClientTest extends TestCase
             ->expects(self::once())
             ->method('run')
             ->with(['git', 'show', '--end-of-options', 'HEAD:missing.php'])
-            ->willReturn([
-                'output' => '',
-                'errorOutput' => 'path not found',
-                'exitCode' => 128,
-            ]);
+            ->willReturn(new GitCommandResult('', 'path not found', 128));
 
         $client = new GitClient($commandRunner);
 

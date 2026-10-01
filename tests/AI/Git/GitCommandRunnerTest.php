@@ -16,9 +16,9 @@ final class GitCommandRunnerTest extends TestCase
 
         $result = (new GitCommandRunner())->run($command);
 
-        self::assertSame("first\0second\n", $result['output']);
-        self::assertSame('diagnostic', $result['errorOutput']);
-        self::assertSame(7, $result['exitCode']);
+        self::assertSame("first\0second\n", $result->output);
+        self::assertSame('diagnostic', $result->errorOutput);
+        self::assertSame(7, $result->exitCode);
     }
 
     public function testCommandArgumentsAreNotInterpretedByAShell(): void
@@ -33,8 +33,8 @@ final class GitCommandRunnerTest extends TestCase
 
         $result = (new GitCommandRunner())->run($command);
 
-        self::assertSame($argument, $result['output']);
-        self::assertSame('', $result['errorOutput']);
-        self::assertSame(0, $result['exitCode']);
+        self::assertSame($argument, $result->output);
+        self::assertSame('', $result->errorOutput);
+        self::assertSame(0, $result->exitCode);
     }
 }

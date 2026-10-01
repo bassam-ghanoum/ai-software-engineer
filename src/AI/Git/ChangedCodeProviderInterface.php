@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace App\AI\Git;
 
+use App\AI\Git\DTO\ChangedPhpFiles;
+
 interface ChangedCodeProviderInterface
 {
-    /**
-     * @return array<string, string>
-     */
+    /** @return ChangedPhpFiles mapping repository-relative paths to source. */
     public function getChangedPhpFiles(
         string $from,
         string $to
-    ): array;
+    ): ChangedPhpFiles;
 }

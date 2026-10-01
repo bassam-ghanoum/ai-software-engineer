@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\AI\Git;
 
+use App\AI\Git\DTO\ChangedPhpFilePaths;
+use App\AI\Git\DTO\GitCommandResult;
+
 final class GitClient implements GitInterface
 {
     public function __construct(
@@ -14,7 +17,7 @@ final class GitClient implements GitInterface
     public function getChangedPhpFiles(
         string $from,
         string $to,
-    ): array {
+    ): ChangedPhpFilePaths {
         $command = [
             'git',
             'diff',
@@ -30,21 +33,21 @@ final class GitClient implements GitInterface
 
         $result = $this->commandRunner->run($command);
 
-        if ($result['exitCode'] !== 0) {
+        if ($result->exitCode !== 0) {
             throw new \RuntimeException(
                 sprintf(
                     'Failed to determine changed PHP files from Git: %s',
-                    trim($result['errorOutput']),
+                    trim($result->errorOutput),
                 ),
             );
         }
 
-        return array_values(
+        return new ChangedPhpFilePaths(array_values(
             array_filter(
-                explode("\0", $result['output']),
+                explode("\0", $result->output),
                 static fn (string $path): bool => $path !== '',
             ),
-        );
+        ));
     }
 
     public function readFile(string $path): string
@@ -92,17 +95,17 @@ final class GitClient implements GitInterface
 
         $result = $this->commandRunner->run($command);
 
-        if ($result['exitCode'] !== 0) {
+        if ($result->exitCode !== 0) {
             throw new \RuntimeException(
                 sprintf(
                     'Failed to read PHP file from Git revision %s: %s',
                     $fileSpec,
-                    trim($result['errorOutput']),
+                    trim($result->errorOutput),
                 ),
             );
         }
 
-        return $result['output'];
+        return $result->output;
     }
 
     private function validateGitPath(string $path): void
@@ -137,18 +140,18 @@ final class GitClient implements GitInterface
             '--',
         ]);
 
-        if ($result['exitCode'] === 1) {
+        if ($result->exitCode === 1) {
             throw new \RuntimeException(sprintf(
                 'The working tree does not match target revision "%s". Refusing to apply fixes.',
                 $revision,
             ));
         }
 
-        if ($result['exitCode'] !== 0) {
+        if ($result->exitCode !== 0) {
             throw new \RuntimeException(sprintf(
                 'Failed to compare the working tree with revision "%s": %s',
                 $revision,
-                trim($result['errorOutput']),
+                trim($result->errorOutput),
             ));
         }
     }

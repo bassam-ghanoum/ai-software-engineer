@@ -4,31 +4,27 @@ declare(strict_types=1);
 
 namespace App\AI\Agent\FixAgent;
 
+use App\AI\Agent\FixAgent\DTO\FixedFiles;
+
 final class FixResult
 {
-    /**
-     * @param array<string, string> $fixedFiles
-     */
     public function __construct(
-        private readonly array $fixedFiles,
+        private readonly FixedFiles $fixedFiles,
     ) {
     }
 
-    /**
-     * @return array<string, string>
-     */
-    public function getFixedFiles(): array
+    public function getFixedFiles(): FixedFiles
     {
         return $this->fixedFiles;
     }
 
     public function count(): int
     {
-        return count($this->fixedFiles);
+        return $this->fixedFiles->count();
     }
 
     public function hasChanges(): bool
     {
-        return $this->fixedFiles !== [];
+        return !$this->fixedFiles->isEmpty();
     }
 }

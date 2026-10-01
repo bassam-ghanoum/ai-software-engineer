@@ -23,7 +23,7 @@ final class ReviewResultTest extends TestCase
         $result = new ReviewResult([$finding]);
 
         self::assertCount(1, $result->getFindings());
-        self::assertSame($finding, $result->getFindings()[0]);
+        self::assertSame($finding, $result->getFindings()->get(0));
         self::assertSame(1, $result->count());
         self::assertTrue($result->hasFindings());
     }

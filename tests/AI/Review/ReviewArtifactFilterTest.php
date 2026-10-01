@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\AI\Review;
 
 use App\AI\Review\ReviewArtifactFilter;
+use App\AI\Review\DTO\ResolvedFingerprints;
 use App\AI\Review\ReviewResultSerializer;
 use PHPUnit\Framework\TestCase;
 
@@ -108,7 +109,7 @@ final class ReviewArtifactFilterTest extends TestCase
 
             (new ReviewArtifactFilter(new ReviewResultSerializer()))->filter(
                 $reviewFile,
-                [],
+                new ResolvedFingerprints([]),
             );
         } finally {
             unlink($reviewFile);
@@ -146,7 +147,7 @@ final class ReviewArtifactFilterTest extends TestCase
 
             (new ReviewArtifactFilter(new ReviewResultSerializer()))->filter(
                 $reviewFile,
-                [],
+                new ResolvedFingerprints([]),
             );
         } finally {
             unlink($reviewFile);

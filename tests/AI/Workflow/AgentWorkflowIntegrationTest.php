@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\AI\Workflow;
 
 use App\AI\Agent\CodeReviewAgentInterface;
+use App\AI\Git\DTO\ChangedPhpFiles;
+use App\AI\Review\DTO\ReviewBatch;
 use App\AI\Agent\FixAgent\FixAgentInterface;
 use App\AI\Agent\FixAgent\FixScopeValidatorInterface;
 use App\AI\File\SourceFileProviderInterface;
@@ -60,9 +62,9 @@ PHP;
             ->expects(self::once())
             ->method('getChangedPhpFiles')
             ->with('HEAD~1', 'HEAD')
-            ->willReturn([
+            ->willReturn(new ChangedPhpFiles([
                 $filePath => $originalSource,
-            ]);
+            ]));
 
         $reviewAgent = $this->createMock(
             CodeReviewAgentInterface::class
@@ -87,8 +89,8 @@ PHP;
             'HEAD',
         );
 
-        self::assertArrayHasKey($filePath, $reviews);
-        self::assertSame($reviewResult, $reviews[$filePath]);
+        self::assertNotNull($reviews->getReview($filePath));
+        self::assertSame($reviewResult, $reviews->getReview($filePath));
 
         $sourceFileProvider = $this->createMock(
             SourceFileProviderInterface::class
@@ -157,7 +159,7 @@ PHP;
         self::assertTrue($result->hasChanges());
         self::assertSame(
             [$filePath => $fixedSource],
-            $result->getFixedFiles(),
+            iterator_to_array($result->getFixedFiles()),
         );
     }
 
@@ -217,12 +219,12 @@ PHP;
         );
 
         $result = $fixWorkflow->fix(
-            [$filePath => $reviewResult],
+            new ReviewBatch([$filePath => $reviewResult]),
             false,
         );
 
         self::assertFalse($result->hasChanges());
-        self::assertSame([], $result->getFixedFiles());
+        self::assertTrue($result->getFixedFiles()->isEmpty());
     }
 
 private function createPassingFixScopeValidator(): FixScopeValidatorInterface

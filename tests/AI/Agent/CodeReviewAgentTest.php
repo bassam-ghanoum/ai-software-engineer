@@ -64,32 +64,32 @@ final class CodeReviewAgentTest extends TestCase
 
         self::assertSame(
             5,
-            $result->getFindings()[0]->getLine()
+            $result->getFindings()->get(0)->getLine()
         );
 
         self::assertSame(
             'critical',
-            $result->getFindings()[0]->getSeverity()
+            $result->getFindings()->get(0)->getSeverity()
         );
 
         self::assertSame(
             'security',
-            $result->getFindings()[0]->getCategory()
+            $result->getFindings()->get(0)->getCategory()
         );
 
         self::assertSame(
             12,
-            $result->getFindings()[1]->getLine()
+            $result->getFindings()->get(1)->getLine()
         );
 
         self::assertSame(
             'medium',
-            $result->getFindings()[1]->getSeverity()
+            $result->getFindings()->get(1)->getSeverity()
         );
 
         self::assertSame(
             'error_handling',
-            $result->getFindings()[1]->getCategory()
+            $result->getFindings()->get(1)->getCategory()
         );
     }
 

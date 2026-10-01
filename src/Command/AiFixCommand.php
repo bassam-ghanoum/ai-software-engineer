@@ -6,6 +6,7 @@ namespace App\Command;
 
 use App\AI\Git\GitInterface;
 use App\AI\Review\ReviewResultSerializer;
+use App\AI\Review\DTO\ReviewBatch;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use App\AI\Workflow\FixWorkflowInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -98,7 +99,7 @@ final class AiFixCommand extends Command
             );
         }
 
-        if ($reviews === []) {
+        if ($reviews->isEmpty()) {
             $output->writeln(
                 '<comment>No changed PHP files found.</comment>'
             );
@@ -243,13 +244,10 @@ final class AiFixCommand extends Command
         return Command::SUCCESS;
     }
 
-    /**
-     * @return array<string, \App\AI\Review\ReviewResult>
-     */
     private function loadReviewsFromFile(
         string $reviewFile,
         string $expectedCommitSha,
-    ): array {
+    ): ReviewBatch {
         if (!is_file($reviewFile)) {
             throw new \RuntimeException(
                 sprintf(
@@ -283,7 +281,7 @@ final class AiFixCommand extends Command
 
         $result = $this->serializer->deserialize($json);
 
-        $reviewCommitSha = $result['commit_sha'];
+        $reviewCommitSha = $result->commitSha;
 
         if ($reviewCommitSha !== $expectedCommitSha) {
             throw new \RuntimeException(
@@ -295,6 +293,6 @@ final class AiFixCommand extends Command
             );
         }
 
-        return $result['reviews'];
+        return $result->reviews;
     }
 }

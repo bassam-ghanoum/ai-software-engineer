@@ -4,27 +4,19 @@ declare(strict_types=1);
 
 namespace App\AI\Review;
 
+use App\AI\Review\DTO\ReviewFindingCollection;
+
 final class ReviewResult
 {
-    /**
-     * @param array<int, ReviewFinding> $findings
-     */
-    public function __construct(
-        private readonly array $findings,
-    ) {
-        foreach ($findings as $finding) {
-            if (!$finding instanceof ReviewFinding) {
-                throw new \InvalidArgumentException(
-                    'All review findings must be instances of ReviewFinding.'
-                );
-            }
-        }
+    private readonly ReviewFindingCollection $findings;
+
+    /** @param list<ReviewFinding> $findings */
+    public function __construct(array $findings)
+    {
+        $this->findings = new ReviewFindingCollection($findings);
     }
 
-    /**
-     * @return array<int, ReviewFinding>
-     */
-    public function getFindings(): array
+    public function getFindings(): ReviewFindingCollection
     {
         return $this->findings;
     }
@@ -36,6 +28,6 @@ final class ReviewResult
 
     public function hasFindings(): bool
     {
-        return $this->findings !== [];
+        return !$this->findings->isEmpty();
     }
 }

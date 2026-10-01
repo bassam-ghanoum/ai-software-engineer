@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace App\Tests\Command;
 
 use App\AI\Agent\FixAgent\FixResult;
+use App\AI\Agent\FixAgent\DTO\FixedFiles;
 use App\AI\Git\GitInterface;
 use App\AI\Review\ReviewResultSerializer;
+use App\AI\Review\DTO\ReviewBatch;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use App\AI\Workflow\FixWorkflowInterface;
 use App\Command\AiFixCommand;
@@ -35,14 +37,14 @@ final class AiFixCommandTest extends TestCase
             ->method('fix')
             ->with(
                 self::callback(
-                    static function (array $reviews): bool {
-                        return isset($reviews['fixtures/test1.php'])
-                            && $reviews['fixtures/test1.php']->hasFindings();
+                    static function (ReviewBatch $reviews): bool {
+                        return $reviews->getReview('fixtures/test1.php')?->hasFindings()
+                            ?? false;
                     }
                 ),
                 true,
             )
-            ->willReturn(new FixResult([]));
+            ->willReturn(new FixResult(new FixedFiles([])));
 
         $serializer = new ReviewResultSerializer();
 

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\AI\Review;
 
 use App\AI\Review\ReviewFinding;
+use App\AI\Review\DTO\ReviewBatch;
+use App\AI\Review\DTO\ReviewArtifact;
 use App\AI\Review\ReviewResult;
 use App\AI\Review\ReviewResultSerializer;
 use PHPUnit\Framework\TestCase;
@@ -15,7 +17,7 @@ final class ReviewResultSerializerTest extends TestCase
     {
         $serializer = new ReviewResultSerializer();
 
-        $reviews = [
+        $reviews = new ReviewBatch([
             'src/Test.php' => new ReviewResult([
                 new ReviewFinding(
                     line: 10,
@@ -33,11 +35,10 @@ final class ReviewResultSerializerTest extends TestCase
                 ),
             ]),
             'src/Other.php' => new ReviewResult([]),
-        ];
+        ]);
 
         $json = $serializer->serialize(
-            $reviews,
-            'abc123456789',
+            new ReviewArtifact('abc123456789', $reviews),
         );
 
         $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
@@ -108,15 +109,10 @@ final class ReviewResultSerializerTest extends TestCase
 
         self::assertSame(
             'abc123456789',
-            $result['commit_sha'],
+            $result->commitSha,
         );
 
-        self::assertArrayHasKey(
-            'src/Test.php',
-            $result['reviews'],
-        );
-
-        $review = $result['reviews']['src/Test.php'];
+        $review = $result->reviews->getReview('src/Test.php');
 
         self::assertInstanceOf(
             ReviewResult::class,
@@ -128,7 +124,7 @@ final class ReviewResultSerializerTest extends TestCase
             $review->getFindings(),
         );
 
-        $finding = $review->getFindings()[0];
+        $finding = $review->getFindings()->get(0);
 
         self::assertInstanceOf(
             ReviewFinding::class,
@@ -146,7 +142,7 @@ final class ReviewResultSerializerTest extends TestCase
     {
         $serializer = new ReviewResultSerializer();
 
-        $reviews = [
+        $reviews = new ReviewBatch([
             'fixtures/test1.php' => new ReviewResult([
                 new ReviewFinding(
                     line: 4,
@@ -156,23 +152,22 @@ final class ReviewResultSerializerTest extends TestCase
                     suggestion: 'Return a string or change the declared return type.',
                 ),
             ]),
-        ];
+        ]);
 
         $json = $serializer->serialize(
-            $reviews,
-            'commit-sha-123',
+            new ReviewArtifact('commit-sha-123', $reviews),
         );
 
         $result = $serializer->deserialize($json);
 
         self::assertSame(
             'commit-sha-123',
-            $result['commit_sha'],
+            $result->commitSha,
         );
 
-        $finding = $result['reviews']
-            ['fixtures/test1.php']
-            ->getFindings()[0];
+        $finding = $result->reviews
+            ->getReview('fixtures/test1.php')
+            ->getFindings()->get(0);
 
         self::assertSame(4, $finding->getLine());
         self::assertSame('high', $finding->getSeverity());
@@ -196,7 +191,7 @@ final class ReviewResultSerializerTest extends TestCase
             'Commit SHA cannot be empty.'
         );
 
-        $serializer->serialize([], '');
+        $serializer->serialize(new ReviewArtifact('', new ReviewBatch([])));
     }
 
     public function testItRejectsInvalidJsonDuringDeserialization(): void

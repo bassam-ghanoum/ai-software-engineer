@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI\Git;
 
+use App\AI\Git\DTO\ChangedPhpFiles;
 use RuntimeException;
 
 final class GitChangedCodeProvider implements ChangedCodeProviderInterface
@@ -13,13 +14,10 @@ final class GitChangedCodeProvider implements ChangedCodeProviderInterface
     ) {
     }
 
-    /**
-     * @return array<string, string>
-     */
     public function getChangedPhpFiles(
         string $from,
         string $to
-    ): array {
+    ): ChangedPhpFiles {
         $paths = $this->git->getChangedPhpFiles($from, $to);
 
         $files = [];
@@ -40,6 +38,6 @@ final class GitChangedCodeProvider implements ChangedCodeProviderInterface
             }
         }
 
-        return $files;
+        return new ChangedPhpFiles($files);
     }
 }

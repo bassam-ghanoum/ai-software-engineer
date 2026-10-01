@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\AI\Review;
 
+use App\AI\Review\DTO\ResolvedFingerprints;
+
 final class ReviewArtifactFilter
 {
     public function __construct(
@@ -12,11 +14,11 @@ final class ReviewArtifactFilter
     }
 
     /**
-     * @param array<string, bool> $resolvedFingerprints
+    * @param ResolvedFingerprints $resolvedFingerprints
      */
     public function filter(
         string $file,
-        array $resolvedFingerprints,
+        ResolvedFingerprints $resolvedFingerprints,
     ): int {
         $json = $this->readFile($file);
         $deserialized = $this->serializer->deserialize($json);
@@ -37,11 +39,15 @@ final class ReviewArtifactFilter
             );
         }
 
-        $validatedReviews = $deserialized['reviews'];
+        $validatedReviews = $deserialized->reviews;
         $removed = 0;
 
         foreach ($validatedReviews as $filePath => $reviewResult) {
-            if (!isset($data['reviews'][$filePath]['findings']) || !is_array($data['reviews'][$filePath]['findings']) || !isset($deserialized['reviews'][$filePath])) {
+            if (
+                !isset($data['reviews'][$filePath]['findings'])
+                || !is_array($data['reviews'][$filePath]['findings'])
+                || $validatedReviews->getReview($filePath) === null
+            ) {
                 continue;
             }
             $originalFindings = $data['reviews'][$filePath]['findings'];
@@ -50,7 +56,7 @@ final class ReviewArtifactFilter
             foreach ($reviewResult->getFindings() as $index => $finding) {
                 $fingerprint = $this->fingerprint($filePath, $finding);
 
-                if (isset($resolvedFingerprints[$fingerprint])) {
+                if ($resolvedFingerprints->contains($fingerprint)) {
                     $removed++;
                     continue;
                 }
@@ -87,10 +93,7 @@ final class ReviewArtifactFilter
         return $removed;
     }
 
-    /**
-     * @return array<string, bool>
-     */
-    public function readResolvedFingerprints(string $file): array
+    public function readResolvedFingerprints(string $file): ResolvedFingerprints
     {
         $json = $this->readFile($file);
 
@@ -114,11 +117,11 @@ final class ReviewArtifactFilter
 
         foreach ($fingerprints as $fingerprint) {
             if (is_string($fingerprint) && preg_match('/^[a-f0-9]{64}$/', $fingerprint)) {
-                $result[$fingerprint] = true;
+                $result[] = $fingerprint;
             }
         }
 
-        return $result;
+        return new ResolvedFingerprints($result);
     }
 
     /**

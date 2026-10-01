@@ -6,6 +6,7 @@ namespace App\Tests\Command;
 
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
+use App\AI\Review\DTO\ReviewBatch;
 use App\AI\Review\ReviewResultSerializer;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use App\Command\AiReviewCommand;
@@ -25,7 +26,7 @@ final class AiReviewCommandTest extends TestCase
             ->expects(self::once())
             ->method('reviewChanges')
             ->with('FROM_SHA', 'TO_SHA')
-            ->willReturn([
+            ->willReturn(new ReviewBatch([
                 'fixtures/test1.php' => new ReviewResult([
                     new ReviewFinding(
                         line: 4,
@@ -35,7 +36,7 @@ final class AiReviewCommandTest extends TestCase
                         suggestion: 'Fix the bug.',
                     ),
                 ]),
-            ]);
+            ]));
 
         $serializer = new ReviewResultSerializer();
 
@@ -115,7 +116,7 @@ final class AiReviewCommandTest extends TestCase
             ->expects(self::once())
             ->method('reviewChanges')
             ->with('FROM_SHA', 'TO_SHA')
-            ->willReturn([]);
+            ->willReturn(new ReviewBatch([]));
 
         $serializer = new ReviewResultSerializer();
 

@@ -2,15 +2,12 @@
 
 namespace App\AI\Workflow;
 
-use App\AI\Review\ReviewResult;
+use App\AI\Review\DTO\ReviewBatch;
 
 interface CodeReviewWorkflowInterface
 {
-    /**
-     * @return array<string, ReviewResult>
-     */
     public function reviewChanges(
         string $from,
         string $to
-    ): array;
+    ): ReviewBatch;
 }

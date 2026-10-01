@@ -6,7 +6,7 @@ namespace App\AI\Workflow;
 
 use App\AI\Agent\CodeReviewAgentInterface;
 use App\AI\Git\ChangedCodeProviderInterface;
-use App\AI\Review\ReviewResult;
+use App\AI\Review\DTO\ReviewBatch;
 
 final class CodeReviewWorkflow implements CodeReviewWorkflowInterface
 {
@@ -16,17 +16,11 @@ final class CodeReviewWorkflow implements CodeReviewWorkflowInterface
     ) {
     }
 
-    /**
-     * Review each changed PHP file independently.
-     *
-     * Each file is sent to the review agent as a separate LLM request.
-     *
-     * @return array<string, ReviewResult>
-     */
+    /** Review each changed PHP file independently. */
     public function reviewChanges(
         string $from,
         string $to,
-    ): array {
+    ): ReviewBatch {
         $changedFiles = $this->changedCodeProvider->getChangedPhpFiles(
             $from,
             $to,
@@ -41,6 +35,6 @@ final class CodeReviewWorkflow implements CodeReviewWorkflowInterface
             );
         }
 
-        return $results;
+        return new ReviewBatch($results);
     }
 }

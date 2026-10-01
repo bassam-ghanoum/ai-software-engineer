@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\AI\Git;
 
 use App\AI\Git\GitChangedCodeProvider;
+use App\AI\Git\DTO\ChangedPhpFilePaths;
+use App\AI\Git\DTO\ChangedPhpFiles;
 use App\AI\Git\GitInterface;
 use PHPUnit\Framework\TestCase;
 
@@ -18,10 +20,10 @@ final class GitChangedCodeProviderTest extends TestCase
             ->expects(self::once())
             ->method('getChangedPhpFiles')
             ->with('HEAD~1', 'HEAD')
-            ->willReturn([
+            ->willReturn(new ChangedPhpFilePaths([
                 'src/Service/UserService.php',
                 'src/Repository/UserRepository.php',
-            ]);
+            ]));
 
         $git
             ->expects(self::exactly(2))
@@ -48,7 +50,7 @@ final class GitChangedCodeProviderTest extends TestCase
                 'src/Service/UserService.php' => '<?php class UserService {}',
                 'src/Repository/UserRepository.php' => '<?php class UserRepository {}',
             ],
-            $result
+            iterator_to_array($result),
         );
     }
 
@@ -60,7 +62,7 @@ final class GitChangedCodeProviderTest extends TestCase
             ->expects(self::once())
             ->method('getChangedPhpFiles')
             ->with('HEAD~1', 'HEAD')
-            ->willReturn([]);
+            ->willReturn(new ChangedPhpFilePaths([]));
 
         $git
             ->expects(self::never())
@@ -70,7 +72,7 @@ final class GitChangedCodeProviderTest extends TestCase
 
         $result = $provider->getChangedPhpFiles('HEAD~1', 'HEAD');
 
-        self::assertSame([], $result);
+        self::assertTrue($result->isEmpty());
     }
 
     public function testItReadsEveryChangedPhpFile(): void
@@ -79,11 +81,11 @@ final class GitChangedCodeProviderTest extends TestCase
 
         $git
             ->method('getChangedPhpFiles')
-            ->willReturn([
+            ->willReturn(new ChangedPhpFilePaths([
                 'src/A.php',
                 'src/B.php',
                 'src/C.php',
-            ]);
+            ]));
 
         $git
             ->expects(self::exactly(3))
@@ -100,9 +102,9 @@ final class GitChangedCodeProviderTest extends TestCase
 
         self::assertCount(3, $result);
 
-        self::assertSame('<?php class A {}', $result['src/A.php']);
-        self::assertSame('<?php class B {}', $result['src/B.php']);
-        self::assertSame('<?php class C {}', $result['src/C.php']);
+        self::assertSame('<?php class A {}', $result->getContent('src/A.php'));
+        self::assertSame('<?php class B {}', $result->getContent('src/B.php'));
+        self::assertSame('<?php class C {}', $result->getContent('src/C.php'));
     }
 
     public function testReadFailureIncludesPathAndRevisionAndPreservesCause(): void
@@ -113,7 +115,7 @@ final class GitChangedCodeProviderTest extends TestCase
             ->expects(self::once())
             ->method('getChangedPhpFiles')
             ->with('BASE', 'HEAD')
-            ->willReturn(['src/Missing.php']);
+            ->willReturn(new ChangedPhpFilePaths(['src/Missing.php']));
 
         $git
             ->expects(self::once())

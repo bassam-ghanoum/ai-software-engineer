@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\AI\Review;
 
+use App\AI\Review\DTO\ChangedLineNumbers;
+use App\AI\Review\DTO\ChangedLines;
+
 final class ChangedLinesParser
 {
-    /**
-     * @return array<string, array<int, bool>>
-     */
-    public function parse(string $diff): array
+    public function parse(string $diff): ChangedLines
     {
         $changedLines = [];
         $currentFile = null;
@@ -68,6 +68,12 @@ final class ChangedLinesParser
             $changedLines[$file] = $lines;
         }
 
-        return $changedLines;
+        $files = [];
+
+        foreach ($changedLines as $filePath => $lines) {
+            $files[$filePath] = new ChangedLineNumbers($lines);
+        }
+
+        return new ChangedLines($files);
     }
 }

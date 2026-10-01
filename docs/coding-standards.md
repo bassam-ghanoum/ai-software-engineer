@@ -15,6 +15,22 @@ changes.
 - Use `final` for classes that are not designed for extension.
 - Prefer constructor property promotion and `readonly` for immutable services,
   DTOs, and value objects.
+- Return DTOs for semantic application results instead of positional or
+  associative arrays. DTOs should be `final readonly`, expose named typed
+  properties or intent-revealing accessors, and validate their invariants when
+  constructed.
+- Represent domain collections with small typed collection DTOs that implement
+  `IteratorAggregate` and `Countable`; validate element types at construction
+  and preserve meaningful keys such as file paths. Do not introduce a generic
+  collection framework for unrelated result types.
+- Keep arrays at explicit framework, transport, and serialization boundaries
+  (for example, Symfony hooks and JSON payloads). Convert to or from those
+  arrays at the boundary rather than passing decoded or encoded shapes through
+  application services. A `toArray()` conversion belongs at that boundary,
+  not in ordinary internal result handling.
+- Do not mechanically replace every `array` return: private parsing details
+  and framework-required signatures may remain arrays when they are not
+  application result contracts.
 - Use enums for closed sets of values instead of string or integer constants.
 - Use `DateTimeImmutable` instead of mutable date objects.
 - Keep methods small and focused. Name methods and variables for intent rather

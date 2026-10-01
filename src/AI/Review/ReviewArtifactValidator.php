@@ -26,31 +26,21 @@ final class ReviewArtifactValidator
         }
 
         $json = $this->readFile($file);
-        $data = $this->decodeJson($json);
         $result = $this->serializer->deserialize($json);
 
-        $reviewCommitSha = $data['commit_sha'] ?? null;
-        $reviewBaseSha = $data['base_sha'] ?? null;
-
-        if (!is_string($reviewCommitSha) || trim($reviewCommitSha) === '') {
-            throw new \RuntimeException(
-                'Review result does not contain a valid commit SHA.',
-            );
-        }
-
-        if (!is_string($reviewBaseSha) || trim($reviewBaseSha) === '') {
+        if ($result->baseSha === null) {
             throw new \RuntimeException(
                 'Review result does not contain a valid base SHA.',
             );
         }
 
-        if ($reviewCommitSha !== $expectedCommitSha) {
+        if ($result->commitSha !== $expectedCommitSha) {
             throw new \RuntimeException(
                 'Review result does not belong to the current PR HEAD.',
             );
         }
 
-        if ($reviewBaseSha !== $expectedBaseSha) {
+        if ($result->baseSha !== $expectedBaseSha) {
             throw new \RuntimeException(
                 'Review result does not belong to the current PR BASE.',
             );
@@ -58,7 +48,7 @@ final class ReviewArtifactValidator
 
         $findingsCount = 0;
 
-        foreach ($result['reviews'] as $review) {
+        foreach ($result->reviews as $review) {
             $findingsCount += $review->count();
         }
 
@@ -90,32 +80,4 @@ final class ReviewArtifactValidator
         return $content;
     }
 
-    /**
-     * @return array<string, mixed>
-     */
-    private function decodeJson(string $json): array
-    {
-        try {
-            $data = json_decode(
-                $json,
-                true,
-                512,
-                JSON_THROW_ON_ERROR,
-            );
-        } catch (\JsonException $exception) {
-            throw new \RuntimeException(
-                'Review result is not valid JSON.',
-                0,
-                $exception,
-            );
-        }
-
-        if (!is_array($data)) {
-            throw new \RuntimeException(
-                'Review result must contain a JSON object.',
-            );
-        }
-
-        return $data;
-    }
 }

@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace App\AI\Git;
 
+use App\AI\Git\DTO\ChangedPhpFilePaths;
+
 interface GitInterface
 {
-    /**
-     * @return array<int, string>
-     */
+    /** @return ChangedPhpFilePaths containing repository-relative file paths. */
     public function getChangedPhpFiles(
         string $from,
         string $to
-    ): array;
+    ): ChangedPhpFilePaths;
 
     public function readFile(string $path): string;
 

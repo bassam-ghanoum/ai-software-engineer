@@ -6,6 +6,7 @@ namespace App\Tests\AI\Workflow;
 
 use App\AI\Agent\CodeReviewAgentInterface;
 use App\AI\Git\ChangedCodeProviderInterface;
+use App\AI\Git\DTO\ChangedPhpFiles;
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
 use App\AI\Workflow\CodeReviewWorkflow;
@@ -25,10 +26,10 @@ final class CodeReviewWorkflowTest extends TestCase
             ->expects(self::once())
             ->method('getChangedPhpFiles')
             ->with('HEAD~1', 'HEAD')
-            ->willReturn([
+            ->willReturn(new ChangedPhpFiles([
                 'src/Service/UserService.php' => '<?php class UserService {}',
                 'src/Repository/UserRepository.php' => '<?php class UserRepository {}',
-            ]);
+            ]));
 
         $reviewAgent
             ->expects(self::exactly(2))
@@ -63,22 +64,15 @@ final class CodeReviewWorkflowTest extends TestCase
 
         self::assertCount(2, $results);
 
-        self::assertArrayHasKey(
-            'src/Service/UserService.php',
-            $results
-        );
-
-        self::assertArrayHasKey(
-            'src/Repository/UserRepository.php',
-            $results
-        );
+        self::assertNotNull($results->getReview('src/Service/UserService.php'));
+        self::assertNotNull($results->getReview('src/Repository/UserRepository.php'));
 
         self::assertTrue(
-            $results['src/Service/UserService.php']->hasFindings()
+            $results->getReview('src/Service/UserService.php')?->hasFindings()
         );
 
         self::assertFalse(
-            $results['src/Repository/UserRepository.php']->hasFindings()
+            $results->getReview('src/Repository/UserRepository.php')?->hasFindings()
         );
     }
 
@@ -94,7 +88,7 @@ final class CodeReviewWorkflowTest extends TestCase
             ->expects(self::once())
             ->method('getChangedPhpFiles')
             ->with('HEAD~1', 'HEAD')
-            ->willReturn([]);
+            ->willReturn(new ChangedPhpFiles([]));
 
         $reviewAgent
             ->expects(self::never())
@@ -110,6 +104,6 @@ final class CodeReviewWorkflowTest extends TestCase
             'HEAD'
         );
 
-        self::assertSame([], $results);
+        self::assertTrue($results->isEmpty());
     }
 }

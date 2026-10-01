@@ -33,7 +33,7 @@ DIFF);
                     12 => true,
                 ],
             ],
-            $changedLines,
+            $changedLines->jsonSerialize(),
         );
     }
 }
