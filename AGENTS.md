@@ -1,4 +1,4 @@
-# 2 Agents AI Software Engineer
+# AI Software Engineer
 
 This file is the canonical project context and working agreement for OpenAI
 Codex and other coding agents working in this repository.

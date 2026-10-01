@@ -80,6 +80,11 @@ final class ReviewCommentPreparer
                     continue;
                 }
 
+                $comment['body'] =
+                    "Notice: This finding points to a line that was not changed "
+                    . "in this pull request, so it is shown as a general comment.\n\n"
+                    . $comment['body'];
+
                 $general[] = $comment;
             }
         }

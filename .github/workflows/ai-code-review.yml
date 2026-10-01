@@ -31,7 +31,7 @@ jobs:
       #
       #   Apply AI code fixes
       #
-      # We must NOT run Agent 1 again for that commit.
+      # We must NOT run AI Code Review Agent  again for that commit.
       # ================================================================
 
       - name: Detect Fix-Agent commit
@@ -84,7 +84,7 @@ jobs:
         run: composer install --no-interaction --no-progress --prefer-dist
 
       # ================================================================
-      # Run Agent 1
+      # Run AI Code Review Agent 
       # ================================================================
 
       - name: Run AI Code Review

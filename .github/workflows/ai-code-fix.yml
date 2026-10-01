@@ -732,7 +732,7 @@ jobs:
 
           **Base SHA:** \`$BASE_SHA\`
 
-          AI-Code-Fix-agent successfully applied the persisted Agent 1 findings and pushed the fix commit.
+          AI-Code-Fix-agent successfully applied the persisted AI Code Review Agent  findings and pushed the fix commit.
 
           <!-- $MARKER -->
           EOF
