@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\AI\Git\DTO;
+namespace App\AI\DTO\Git;
 
 final readonly class GitCommandResult
 {

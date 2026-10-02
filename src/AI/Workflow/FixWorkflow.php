@@ -5,12 +5,12 @@ declare(strict_types=1);
 namespace App\AI\Workflow;
 
 use App\AI\Agent\FixAgent\FixAgentInterface;
-use App\AI\Agent\FixAgent\DTO\FixedFiles;
+use App\AI\DTO\Agent\FixAgent\FixedFiles;
 use App\AI\Agent\FixAgent\FixResult;
 use App\AI\Agent\FixAgent\FixScopeValidatorInterface;
 use App\AI\File\SourceFileProviderInterface;
 use App\AI\File\SourceValidatorInterface;
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Review\ReviewResult;
 use InvalidArgumentException;
 use Psr\Log\LoggerInterface;

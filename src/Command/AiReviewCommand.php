@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Command;
 
 use App\AI\Review\ReviewResultSerializer;
-use App\AI\Review\DTO\ReviewArtifact;
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Review\ReviewArtifact;
+use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\AI\Review;
 
 use App\AI\Review\ReviewFinding;
-use App\AI\Review\DTO\ReviewBatch;
-use App\AI\Review\DTO\ReviewArtifact;
+use App\AI\DTO\Review\ReviewBatch;
+use App\AI\DTO\Review\ReviewArtifact;
 use App\AI\Review\ReviewResult;
 use App\AI\Review\ReviewResultSerializer;
 use PHPUnit\Framework\TestCase;

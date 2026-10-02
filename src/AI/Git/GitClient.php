@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\AI\Git;
 
-use App\AI\Git\DTO\ChangedPhpFilePaths;
-use App\AI\Git\DTO\GitCommandResult;
+use App\AI\DTO\Git\ChangedPhpFilePaths;
+use App\AI\DTO\Git\GitCommandResult;
 
 final class GitClient implements GitInterface
 {

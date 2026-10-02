@@ -6,7 +6,7 @@ namespace App\Tests\Command;
 
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Review\ReviewResultSerializer;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use App\Command\AiReviewCommand;

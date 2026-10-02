@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\AI\Agent\FixAgent\DTO;
+namespace App\AI\DTO\Git;
 
 use ArrayIterator;
 use Countable;
@@ -11,18 +11,18 @@ use IteratorAggregate;
 use Traversable;
 
 /** @implements IteratorAggregate<string, string> */
-final readonly class FixedFiles implements Countable, IteratorAggregate
+final readonly class ChangedPhpFiles implements Countable, IteratorAggregate
 {
     /**
-     * @param array<string, string> $files File paths mapped to fixed source contents.
+     * @param array<string, string> $files File paths mapped to source contents.
      */
     public function __construct(
         private array $files,
     ) {
-        foreach ($files as $filePath => $source) {
-            if (!is_string($filePath) || $filePath === '' || !is_string($source)) {
+        foreach ($files as $path => $source) {
+            if (!is_string($path) || $path === '' || !is_string($source)) {
                 throw new InvalidArgumentException(
-                    'Fixed files must map non-empty paths to source strings.',
+                    'Changed PHP files must map non-empty paths to source strings.',
                 );
             }
         }
@@ -38,9 +38,9 @@ final readonly class FixedFiles implements Countable, IteratorAggregate
         return $this->files === [];
     }
 
-    public function getContent(string $filePath): ?string
+    public function getContent(string $path): ?string
     {
-        return $this->files[$filePath] ?? null;
+        return $this->files[$path] ?? null;
     }
 
     /** @return Traversable<string, string> */

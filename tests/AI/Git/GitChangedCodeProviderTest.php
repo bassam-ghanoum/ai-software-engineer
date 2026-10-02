@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\AI\Git;
 
 use App\AI\Git\GitChangedCodeProvider;
-use App\AI\Git\DTO\ChangedPhpFilePaths;
-use App\AI\Git\DTO\ChangedPhpFiles;
+use App\AI\DTO\Git\ChangedPhpFilePaths;
+use App\AI\DTO\Git\ChangedPhpFiles;
 use App\AI\Git\GitInterface;
 use PHPUnit\Framework\TestCase;
 

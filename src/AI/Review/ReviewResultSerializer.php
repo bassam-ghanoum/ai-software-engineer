@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\AI\Review;
 
-use App\AI\Review\DTO\ReviewArtifact;
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Review\ReviewArtifact;
+use App\AI\DTO\Review\ReviewBatch;
 
 final class ReviewResultSerializer
 {

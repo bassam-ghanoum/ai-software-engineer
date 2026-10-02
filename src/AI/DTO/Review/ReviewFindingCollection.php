@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\AI\Review\DTO;
+namespace App\AI\DTO\Review;
 
 use ArrayIterator;
 use App\AI\Review\ReviewFinding;

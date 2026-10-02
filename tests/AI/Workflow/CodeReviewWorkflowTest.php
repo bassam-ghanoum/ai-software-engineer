@@ -6,7 +6,7 @@ namespace App\Tests\AI\Workflow;
 
 use App\AI\Agent\CodeReviewAgentInterface;
 use App\AI\Git\ChangedCodeProviderInterface;
-use App\AI\Git\DTO\ChangedPhpFiles;
+use App\AI\DTO\Git\ChangedPhpFiles;
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
 use App\AI\Workflow\CodeReviewWorkflow;

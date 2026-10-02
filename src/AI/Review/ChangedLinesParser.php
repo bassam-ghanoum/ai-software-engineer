@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\AI\Review;
 
-use App\AI\Review\DTO\ChangedLineNumbers;
-use App\AI\Review\DTO\ChangedLines;
+use App\AI\DTO\Review\ChangedLineNumbers;
+use App\AI\DTO\Review\ChangedLines;
 
 final class ChangedLinesParser
 {

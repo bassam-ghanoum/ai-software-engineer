@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace App\Tests\Command;
 
 use App\AI\Agent\FixAgent\FixResult;
-use App\AI\Agent\FixAgent\DTO\FixedFiles;
+use App\AI\DTO\Agent\FixAgent\FixedFiles;
 use App\AI\Git\GitInterface;
 use App\AI\Review\ReviewResultSerializer;
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use App\AI\Workflow\FixWorkflowInterface;
 use App\Command\AiFixCommand;

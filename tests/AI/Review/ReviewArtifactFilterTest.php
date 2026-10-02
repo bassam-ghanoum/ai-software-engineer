@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\AI\Review;
 
 use App\AI\Review\ReviewArtifactFilter;
-use App\AI\Review\DTO\ResolvedFingerprints;
+use App\AI\DTO\Review\ResolvedFingerprints;
 use App\AI\Review\ReviewResultSerializer;
 use PHPUnit\Framework\TestCase;
 

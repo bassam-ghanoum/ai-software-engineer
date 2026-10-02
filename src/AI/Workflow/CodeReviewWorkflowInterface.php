@@ -2,7 +2,7 @@
 
 namespace App\AI\Workflow;
 
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Review\ReviewBatch;
 
 interface CodeReviewWorkflowInterface
 {

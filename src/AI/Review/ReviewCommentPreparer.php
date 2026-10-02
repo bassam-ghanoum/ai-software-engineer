@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\AI\Review;
 
-use App\AI\Review\DTO\ChangedLineNumbers;
-use App\AI\Review\DTO\ReviewComment;
-use App\AI\Review\DTO\ReviewCommentCollection;
-use App\AI\Review\DTO\ReviewCommentPreparationResult;
+use App\AI\DTO\Review\ChangedLineNumbers;
+use App\AI\DTO\Review\ReviewComment;
+use App\AI\DTO\Review\ReviewCommentCollection;
+use App\AI\DTO\Review\ReviewCommentPreparationResult;
 use RuntimeException;
 
 final class ReviewCommentPreparer

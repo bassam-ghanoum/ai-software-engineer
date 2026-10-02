@@ -6,7 +6,7 @@ namespace App\AI\Workflow;
 
 use App\AI\Agent\CodeReviewAgentInterface;
 use App\AI\Git\ChangedCodeProviderInterface;
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Review\ReviewBatch;
 
 final class CodeReviewWorkflow implements CodeReviewWorkflowInterface
 {

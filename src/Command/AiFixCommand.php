@@ -6,7 +6,7 @@ namespace App\Command;
 
 use App\AI\Git\GitInterface;
 use App\AI\Review\ReviewResultSerializer;
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Workflow\CodeReviewWorkflowInterface;
 use App\AI\Workflow\FixWorkflowInterface;
 use Symfony\Component\Console\Attribute\AsCommand;

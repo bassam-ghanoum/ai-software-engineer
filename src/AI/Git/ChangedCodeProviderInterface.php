@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI\Git;
 
-use App\AI\Git\DTO\ChangedPhpFiles;
+use App\AI\DTO\Git\ChangedPhpFiles;
 
 interface ChangedCodeProviderInterface
 {

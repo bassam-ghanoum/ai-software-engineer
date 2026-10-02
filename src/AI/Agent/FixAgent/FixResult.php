@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI\Agent\FixAgent;
 
-use App\AI\Agent\FixAgent\DTO\FixedFiles;
+use App\AI\DTO\Agent\FixAgent\FixedFiles;
 
 final class FixResult
 {

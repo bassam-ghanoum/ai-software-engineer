@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI\Git;
 
-use App\AI\Git\DTO\GitCommandResult;
+use App\AI\DTO\Git\GitCommandResult;
 use InvalidArgumentException;
 use RuntimeException;
 

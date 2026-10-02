@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\AI\Workflow;
 
 use App\AI\Agent\CodeReviewAgentInterface;
-use App\AI\Git\DTO\ChangedPhpFiles;
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Git\ChangedPhpFiles;
+use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Agent\FixAgent\FixAgentInterface;
 use App\AI\Agent\FixAgent\FixScopeValidatorInterface;
 use App\AI\File\SourceFileProviderInterface;

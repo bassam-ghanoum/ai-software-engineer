@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\AI\Workflow;
 
 use App\AI\Agent\FixAgent\FixResult;
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Review\ReviewBatch;
 
 interface FixWorkflowInterface
 {

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\AI\Git;
 
 use App\AI\Git\GitClient;
-use App\AI\Git\DTO\GitCommandResult;
+use App\AI\DTO\Git\GitCommandResult;
 use App\AI\Git\GitCommandRunnerInterface;
 use PHPUnit\Framework\TestCase;
 

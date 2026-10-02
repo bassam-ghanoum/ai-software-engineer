@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI\Review;
 
-use App\AI\Review\DTO\ReviewFindingCollection;
+use App\AI\DTO\Review\ReviewFindingCollection;
 
 final class ReviewResult
 {

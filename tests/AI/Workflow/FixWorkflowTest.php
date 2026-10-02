@@ -9,7 +9,7 @@ use App\AI\Agent\FixAgent\FixScopeValidatorInterface;
 use App\AI\File\SourceFileProviderInterface;
 use App\AI\File\SourceValidatorInterface;
 use App\AI\Review\ReviewFinding;
-use App\AI\Review\DTO\ReviewBatch;
+use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Review\ReviewResult;
 use App\AI\Workflow\FixWorkflow;
 use InvalidArgumentException;
