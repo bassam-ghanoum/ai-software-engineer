@@ -2,15 +2,13 @@
 
 namespace App\AI\Agent;
 
+use App\AI\DTO\Agent\ReviewUnitBatch;
+use App\AI\DTO\Agent\ReviewUnitResults;
 use App\AI\Review\ReviewResult;
 
 interface CodeReviewAgentInterface
 {
     public function review(string $filePath, string $code): ReviewResult;
 
-    /**
-     * @param list<ReviewUnit> $units
-     * @return array<string, ReviewResult> Results keyed by review unit ID.
-     */
-    public function reviewBatch(array $units): array;
+    public function reviewBatch(ReviewUnitBatch $batch): ReviewUnitResults;
 }

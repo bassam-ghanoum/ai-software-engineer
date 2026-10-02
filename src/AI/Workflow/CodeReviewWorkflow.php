@@ -7,7 +7,6 @@ namespace App\AI\Workflow;
 use App\AI\Agent\CodeReviewAgentInterface;
 use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Git\ChangedCodeProviderInterface;
-use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
 
 final class CodeReviewWorkflow implements CodeReviewWorkflowInterface
@@ -28,18 +27,18 @@ final class CodeReviewWorkflow implements CodeReviewWorkflowInterface
     ): ReviewBatch {
         $changedFiles = $this->changedCodeProvider->getChangedPhpFiles($from, $to);
 
-        /** @var array<string, list<ReviewFinding>> $findingsByFile */
-        $findingsByFile = [];
+        /** @var array<string, ReviewResult|null> $resultsByFile */
+        $resultsByFile = [];
 
         foreach ($changedFiles as $filePath => $_sourceCode) {
-            $findingsByFile[$filePath] = [];
+            $resultsByFile[$filePath] = null;
         }
 
         foreach ($this->requestPlanner->plan($changedFiles) as $batch) {
             $unitResults = $this->reviewAgent->reviewBatch($batch);
 
             foreach ($batch as $unit) {
-                $result = $unitResults[$unit->id] ?? null;
+                $result = $unitResults->getResult($unit->id);
 
                 if (!$result instanceof ReviewResult) {
                     throw new \RuntimeException(sprintf(
@@ -48,16 +47,24 @@ final class CodeReviewWorkflow implements CodeReviewWorkflowInterface
                     ));
                 }
 
-                foreach ($result->getFindings() as $finding) {
-                    $findingsByFile[$unit->filePath][] = $finding;
+                $previousResult = $resultsByFile[$unit->filePath];
+
+                if ($previousResult === null) {
+                    $resultsByFile[$unit->filePath] = $result;
+                    continue;
                 }
+
+                $resultsByFile[$unit->filePath] = new ReviewResult([
+                    ...iterator_to_array($previousResult->getFindings()),
+                    ...iterator_to_array($result->getFindings()),
+                ]);
             }
         }
 
         $results = [];
 
-        foreach ($findingsByFile as $filePath => $findings) {
-            $results[$filePath] = new ReviewResult($findings);
+        foreach ($resultsByFile as $filePath => $result) {
+            $results[$filePath] = $result ?? new ReviewResult([]);
         }
 
         return new ReviewBatch($results);

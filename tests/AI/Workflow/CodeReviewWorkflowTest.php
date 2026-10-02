@@ -7,6 +7,8 @@ namespace App\Tests\AI\Workflow;
 use App\AI\Agent\CodeReviewAgentInterface;
 use App\AI\Git\ChangedCodeProviderInterface;
 use App\AI\DTO\Git\ChangedPhpFiles;
+use App\AI\DTO\Agent\ReviewUnitBatch;
+use App\AI\DTO\Agent\ReviewUnitResults;
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
 use App\AI\Workflow\CodeReviewWorkflow;
@@ -32,23 +34,27 @@ final class CodeReviewWorkflowTest extends TestCase
             ]));
 
         $reviewAgent
-            ->expects(self::exactly(2))
-            ->method('review')
+            ->expects(self::once())
+            ->method('reviewBatch')
             ->willReturnCallback(
-                static function (string $code): ReviewResult {
-                    if (str_contains($code, 'UserService')) {
-                        return new ReviewResult([
-                            new ReviewFinding(
-                                1,
-                                severity: 'high',
-                                category: 'security',
-                                message: 'Security issue in service.',
-                                suggestion: 'Validate the input.'
-                            ),
-                        ]);
+                static function (ReviewUnitBatch $batch): ReviewUnitResults {
+                    $results = [];
+
+                    foreach ($batch as $unit) {
+                        $results[$unit->id] = str_contains($unit->code, 'UserService')
+                            ? new ReviewResult([
+                                new ReviewFinding(
+                                    1,
+                                    severity: 'high',
+                                    category: 'security',
+                                    message: 'Security issue in service.',
+                                    suggestion: 'Validate the input.'
+                                ),
+                            ])
+                            : new ReviewResult([]);
                     }
 
-                    return new ReviewResult([]);
+                    return new ReviewUnitResults($results);
                 }
             );
 
@@ -92,7 +98,7 @@ final class CodeReviewWorkflowTest extends TestCase
 
         $reviewAgent
             ->expects(self::never())
-            ->method('review');
+            ->method('reviewBatch');
 
         $workflow = new CodeReviewWorkflow(
             $changedCodeProvider,

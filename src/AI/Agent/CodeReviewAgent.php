@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\AI\Agent;
 
+use App\AI\DTO\Agent\ReviewUnitBatch;
+use App\AI\DTO\Agent\ReviewUnitResults;
 use App\AI\LLM\LlmInterface;
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
@@ -139,22 +141,16 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
         return new ReviewResult($findings);
     }
 
-    public function reviewBatch(array $units): array
+    public function reviewBatch(ReviewUnitBatch $batch): ReviewUnitResults
     {
-        if ($units === []) {
-            return [];
+        if ($batch->isEmpty()) {
+            return new ReviewUnitResults([]);
         }
 
         $payload = [];
         $expected = [];
 
-        foreach ($units as $unit) {
-            if (!$unit instanceof ReviewUnit || isset($expected[$unit->id])) {
-                throw new \InvalidArgumentException(
-                    'Review batches must contain uniquely identified review units.',
-                );
-            }
-
+        foreach ($batch as $unit) {
             $expected[$unit->id] = $unit;
             $payload[] = [
                 'unit_id' => $unit->id,
@@ -233,10 +229,10 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
 
                 foreach (['severity', 'category', 'message', 'suggestion'] as $field) {
                     if (!is_string($finding[$field])) {
-                    throw new \RuntimeException(sprintf(
-                        'Review finding field "%s" is missing or invalid.',
-                        $field,
-                    ));
+                        throw new \RuntimeException(sprintf(
+                            'Review finding field "%s" is missing or invalid.',
+                            $field,
+                        ));
                     }
                 }
 
@@ -258,6 +254,6 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
             );
         }
 
-        return $results;
+        return new ReviewUnitResults($results);
     }
 }

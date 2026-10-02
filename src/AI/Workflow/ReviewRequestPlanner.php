@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\AI\Workflow;
 
-use App\AI\Agent\ReviewUnit;
+use App\AI\DTO\Agent\ReviewUnit;
+use App\AI\DTO\Agent\ReviewUnitBatch;
 use App\AI\DTO\Git\ChangedPhpFiles;
+use App\AI\DTO\Workflow\ReviewRequestPlan;
 
 /** Builds bounded requests, batching small files and splitting large ones. */
 final class ReviewRequestPlanner
@@ -14,10 +16,7 @@ final class ReviewRequestPlanner
     private const MAX_UNIT_CHARACTERS = 24000;
     private const ESTIMATED_PROMPT_OVERHEAD = 1500;
 
-    /**
-     * @return list<list<ReviewUnit>>
-     */
-    public function plan(ChangedPhpFiles $files): array
+    public function plan(ChangedPhpFiles $files): ReviewRequestPlan
     {
         $batches = [];
         $currentBatch = [];
@@ -33,7 +32,7 @@ final class ReviewRequestPlanner
                     $currentBatch !== []
                     && $currentEstimate + $unitEstimate > self::REQUEST_TOKEN_BUDGET
                 ) {
-                    $batches[] = $currentBatch;
+                    $batches[] = new ReviewUnitBatch($currentBatch);
                     $currentBatch = [];
                     $currentEstimate = self::ESTIMATED_PROMPT_OVERHEAD;
                 }
@@ -45,29 +44,44 @@ final class ReviewRequestPlanner
         }
 
         if ($currentBatch !== []) {
-            $batches[] = $currentBatch;
+            $batches[] = new ReviewUnitBatch($currentBatch);
         }
 
-        return $batches;
+        return new ReviewRequestPlan($batches);
     }
 
-    /** @return list<ReviewUnit> */
-    private function splitFile(string $filePath, string $source, int $firstUnitNumber): array
+    private function splitFile(
+        string $filePath,
+        string $source,
+        int $firstUnitNumber,
+    ): ReviewUnitBatch
     {
-        $lines = preg_split('/\R/', $source);
+        if ($source === '') {
+            throw new \RuntimeException(sprintf(
+                'Changed file "%s" is empty and cannot be reviewed.',
+                $filePath,
+            ));
+        }
 
-        if ($lines === false || $lines === []) {
+        $parts = preg_split('/(\R)/', $source, -1, PREG_SPLIT_DELIM_CAPTURE);
+
+        if ($parts === false || $parts === []) {
             throw new \RuntimeException(sprintf(
                 'Unable to split changed file "%s".',
                 $filePath,
             ));
         }
 
-        if ($source === '') {
-            throw new \RuntimeException(sprintf(
-                'Changed file "%s" is empty and cannot be reviewed.',
-                $filePath,
-            ));
+        $lines = [];
+
+        for ($index = 0; $index < count($parts); $index += 2) {
+            $line = $parts[$index];
+
+            if (isset($parts[$index + 1])) {
+                $line .= $parts[$index + 1];
+            }
+
+            $lines[] = $line;
         }
 
         $units = [];
@@ -76,7 +90,7 @@ final class ReviewRequestPlanner
         $chunkStartLine = 1;
 
         foreach ($lines as $index => $line) {
-            $lineLength = strlen($line) + 1;
+            $lineLength = strlen($line);
 
             if ($lineLength > self::MAX_UNIT_CHARACTERS) {
                 throw new \RuntimeException(sprintf(
@@ -90,7 +104,7 @@ final class ReviewRequestPlanner
                     sprintf('unit-%d', $firstUnitNumber + count($units)),
                     $filePath,
                     $chunkStartLine,
-                    implode("\n", $chunk),
+                    implode('', $chunk),
                 );
                 $chunk = [];
                 $chunkLength = 0;
@@ -106,10 +120,10 @@ final class ReviewRequestPlanner
                 sprintf('unit-%d', $firstUnitNumber + count($units)),
                 $filePath,
                 $chunkStartLine,
-                implode("\n", $chunk),
+                implode('', $chunk),
             );
         }
 
-        return $units;
+        return new ReviewUnitBatch($units);
     }
 }
