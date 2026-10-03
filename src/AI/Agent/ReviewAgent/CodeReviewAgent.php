@@ -73,8 +73,6 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
             );
         }
 
-        $lineCount = count(preg_split('/\R/', $code));
-
         $findings = [];
 
         foreach ($data['findings'] as $finding) {
@@ -90,6 +88,7 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
                 'category',
                 'message',
                 'suggestion',
+                'source_line',
             ];
 
             foreach ($requiredFields as $field) {
@@ -106,7 +105,6 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
             if (
                 !is_int($finding['line'])
                 || $finding['line'] < 1
-                || $finding['line'] > $lineCount
             ) {
                 throw new \RuntimeException(
                     'Review finding field "line" is missing or invalid.',
@@ -115,6 +113,7 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
 
             foreach (
                 [
+                    'source_line',
                     'severity',
                     'category',
                     'message',
@@ -132,7 +131,11 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
             }
 
             $findings[] = new ReviewFinding(
-                line: $finding['line'],
+                line: $this->resolveSourceLine(
+                    $code,
+                    $finding['line'],
+                    $finding['source_line'],
+                ),
                 severity: $finding['severity'],
                 category: $finding['category'],
                 message: $finding['message'],
@@ -229,7 +232,10 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
                     throw new \RuntimeException('A review finding must be a JSON object.');
                 }
 
-                foreach (['line', 'severity', 'category', 'message', 'suggestion'] as $field) {
+                foreach (
+                    ['line', 'severity', 'category', 'message', 'suggestion', 'source_line']
+                    as $field
+                ) {
                     if (!array_key_exists($field, $finding)) {
                         throw new \RuntimeException(sprintf(
                             'Review finding field "%s" is missing or invalid.',
@@ -240,13 +246,12 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
 
                 if (
                     !is_int($finding['line'])
-                    || $finding['line'] < $unit->startLine
-                    || $finding['line'] > $unit->endLine()
+                    || $finding['line'] < 1
                 ) {
-                    throw new \RuntimeException('Review finding line is outside the supplied source range.');
+                    throw new \RuntimeException('Review finding field "line" is missing or invalid.');
                 }
 
-                foreach (['severity', 'category', 'message', 'suggestion'] as $field) {
+                foreach (['source_line', 'severity', 'category', 'message', 'suggestion'] as $field) {
                     if (!is_string($finding[$field])) {
                         throw new \RuntimeException(sprintf(
                             'Review finding field "%s" is missing or invalid.',
@@ -255,8 +260,19 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
                     }
                 }
 
+                $localLine = $this->resolveSourceLine(
+                    $unit->code,
+                    $finding['line'] - $unit->startLine + 1,
+                    $finding['source_line'],
+                );
+                $absoluteLine = $unit->startLine + $localLine - 1;
+
+                if ($absoluteLine > $unit->endLine()) {
+                    throw new \RuntimeException('Review finding line is outside the supplied source range.');
+                }
+
                 $findings[] = new ReviewFinding(
-                    $finding['line'],
+                    $absoluteLine,
                     $finding['severity'],
                     $finding['category'],
                     $finding['message'],
@@ -274,6 +290,47 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
         }
 
         return new ReviewUnitResults($results);
+    }
+
+    private function resolveSourceLine(
+        string $code,
+        int $reportedLine,
+        string $sourceLine,
+    ): int {
+        $sourceLines = preg_split('/\R/', $code);
+
+        if ($sourceLines === false) {
+            throw new \RuntimeException('Unable to split reviewed source into lines.');
+        }
+
+        if (
+            isset($sourceLines[$reportedLine - 1])
+            && $sourceLines[$reportedLine - 1] === $sourceLine
+        ) {
+            return $reportedLine;
+        }
+
+        $matchingLines = [];
+
+        foreach ($sourceLines as $index => $line) {
+            if ($line === $sourceLine) {
+                $matchingLines[] = $index + 1;
+            }
+        }
+
+        if (count($matchingLines) === 1) {
+            return $matchingLines[0];
+        }
+
+        if ($matchingLines === []) {
+            throw new \RuntimeException(
+                'The review finding source_line does not match the reviewed source.',
+            );
+        }
+
+        throw new \RuntimeException(
+            'The review finding source_line occurs more than once and cannot be located uniquely.',
+        );
     }
 
     private function reviewUnitsIndividually(ReviewUnitBatch $batch): ReviewUnitResults
