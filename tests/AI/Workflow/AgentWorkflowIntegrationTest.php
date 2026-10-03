@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Tests\AI\Workflow;
 
 use App\AI\Agent\CodeReviewAgentInterface;
+use App\AI\DTO\Agent\ReviewUnitBatch;
+use App\AI\DTO\Agent\ReviewUnitResults;
 use App\AI\DTO\Git\ChangedPhpFiles;
 use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Agent\FixAgent\FixAgentInterface;
@@ -72,12 +74,24 @@ PHP;
 
         $reviewAgent
             ->expects(self::once())
-            ->method('review')
-            ->with(
-                $filePath,
-                $originalSource,
-            )
-            ->willReturn($reviewResult);
+            ->method('reviewBatch')
+            ->willReturnCallback(
+                static function (ReviewUnitBatch $batch) use (
+                    $filePath,
+                    $originalSource,
+                    $reviewResult,
+                ): ReviewUnitResults {
+                    self::assertCount(1, $batch);
+                    $unit = iterator_to_array($batch)[0];
+
+                    self::assertSame($filePath, $unit->filePath);
+                    self::assertSame($originalSource, $unit->code);
+
+                    return new ReviewUnitResults([
+                        $unit->id => $reviewResult,
+                    ]);
+                },
+            );
 
         $codeReviewWorkflow = new CodeReviewWorkflow(
             $changedCodeProvider,

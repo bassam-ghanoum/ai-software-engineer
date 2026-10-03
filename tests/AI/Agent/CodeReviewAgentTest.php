@@ -6,6 +6,8 @@ namespace App\Tests\AI\Agent;
 
 use App\AI\Agent\CodeReviewAgent;
 use App\AI\Agent\PromptTemplateLoader;
+use App\AI\DTO\Agent\ReviewUnit;
+use App\AI\DTO\Agent\ReviewUnitBatch;
 use App\AI\LLM\LlmInterface;
 use PHPUnit\Framework\TestCase;
 
@@ -378,6 +380,111 @@ final class CodeReviewAgentTest extends TestCase
         self::assertFalse($result->hasFindings());
         self::assertSame(0, $result->count());
         self::assertCount(0, $result->getFindings());
+    }
+
+    public function testItRetriesBatchUnitsIndividuallyWhenTheLlmReturnsUnknownUnitIds(): void
+    {
+        $llm = $this->createMock(LlmInterface::class);
+
+        $llm
+            ->expects(self::exactly(2))
+            ->method('generateJson')
+            ->willReturnOnConsecutiveCalls(
+                json_encode([
+                    'units' => [
+                        [
+                            'unit_id' => 'unknown-unit',
+                            'findings' => [],
+                        ],
+                    ],
+                ], JSON_THROW_ON_ERROR),
+                json_encode([
+                    'findings' => [
+                        [
+                            'line' => 3,
+                            'severity' => 'medium',
+                            'category' => 'bug',
+                            'message' => 'The return value can be false.',
+                            'suggestion' => 'Handle the false return value.',
+                        ],
+                    ],
+                ], JSON_THROW_ON_ERROR),
+            );
+
+        $agent = $this->createAgent($llm);
+        $batch = new ReviewUnitBatch([
+            new ReviewUnit(
+                'unit-8',
+                'src/Example.php',
+                40,
+                "<?php\n\nreturn false;",
+            ),
+        ]);
+
+        $results = $agent->reviewBatch($batch);
+
+        self::assertCount(1, $results);
+        self::assertSame(42, $results->getResult('unit-8')?->getFindings()->get(0)->getLine());
+    }
+
+    public function testItRetriesBatchUnitsIndividuallyWhenTheLlmReturnsInvalidJson(): void
+    {
+        $llm = $this->createMock(LlmInterface::class);
+
+        $llm
+            ->expects(self::exactly(2))
+            ->method('generateJson')
+            ->willReturnOnConsecutiveCalls(
+                'not valid JSON',
+                json_encode(['findings' => []], JSON_THROW_ON_ERROR),
+            );
+
+        $agent = $this->createAgent($llm);
+        $batch = new ReviewUnitBatch([
+            new ReviewUnit('unit-1', 'src/Example.php', 1, '<?php echo 1;'),
+        ]);
+
+        $results = $agent->reviewBatch($batch);
+
+        self::assertCount(1, $results);
+        self::assertFalse($results->getResult('unit-1')?->hasFindings());
+    }
+
+    public function testItRetriesBatchUnitsIndividuallyWhenFindingStructureIsMalformed(): void
+    {
+        $llm = $this->createMock(LlmInterface::class);
+
+        $llm
+            ->expects(self::exactly(2))
+            ->method('generateJson')
+            ->willReturnOnConsecutiveCalls(
+                json_encode([
+                    'units' => [
+                        [
+                            'unit_id' => 'unit-1',
+                            'findings' => [
+                                [
+                                    'line' => 1,
+                                    'severity' => 'low',
+                                    'category' => 'bug',
+                                    'message' => 'Malformed finding.',
+                                ],
+                            ],
+                        ],
+                    ],
+                ], JSON_THROW_ON_ERROR),
+                json_encode(['findings' => []], JSON_THROW_ON_ERROR),
+            );
+
+        $agent = $this->createAgent($llm);
+        $batch = new ReviewUnitBatch([
+            new ReviewUnit('unit-1', 'src/Example.php', 1, '<?php echo 1;'),
+        ]);
+
+        $results = $agent->reviewBatch($batch);
+
+        self::assertCount(1, $results);
+        self::assertFalse($results->getResult('unit-1')?->hasFindings());
     }
 
     private function createAgent(LlmInterface $llm): CodeReviewAgent

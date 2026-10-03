@@ -82,6 +82,10 @@ Use dependency injection and interfaces wherever practical. Agents generate
 content; workflows decide whether it may be written. Agents must not write
 files directly.
 
+When an application or service method has a meaningful, stable result shape,
+return a typed DTO or collection DTO instead of `array`. Keep arrays for local
+implementation details and framework, transport, or serialization boundaries.
+
 ## Safety invariants
 
 Every change must preserve these rules:
