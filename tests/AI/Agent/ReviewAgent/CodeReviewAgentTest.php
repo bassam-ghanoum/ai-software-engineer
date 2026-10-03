@@ -39,6 +39,7 @@ final class CodeReviewAgentTest extends TestCase
                     'findings' => [
                         [
                             'line' => 5,
+                            'source_line' => '$query = $_GET["query"];',
                             'severity' => 'critical',
                             'category' => 'security',
                             'message' => 'SQL injection vulnerability detected.',
@@ -46,6 +47,7 @@ final class CodeReviewAgentTest extends TestCase
                         ],
                         [
                             'line' => 12,
+                            'source_line' => '$result = mysqli_query($connection, $query);',
                             'severity' => 'medium',
                             'category' => 'error_handling',
                             'message' => 'Database errors are not handled.',
@@ -59,7 +61,20 @@ final class CodeReviewAgentTest extends TestCase
 
         $result = $agent->review(
             'test.php',
-            "<?php\n\n\n\n\necho \"Hello World\";\n\n\n\n\n\n"
+            <<<'PHP'
+<?php
+
+
+
+$query = $_GET["query"];
+
+
+
+
+
+
+$result = mysqli_query($connection, $query);
+PHP
         );
 
         self::assertCount(2, $result->getFindings());
@@ -162,7 +177,7 @@ final class CodeReviewAgentTest extends TestCase
         );
     }
 
-    public function testItRejectsFindingOutsideSourceLineRange(): void
+    public function testItRejectsFindingWhenSourceLineIsNotInTheReviewedSource(): void
     {
         $llm = $this->createStub(LlmInterface::class);
 
@@ -173,6 +188,7 @@ final class CodeReviewAgentTest extends TestCase
                     'findings' => [
                         [
                             'line' => 2,
+                            'source_line' => 'echo 42;',
                             'severity' => 'low',
                             'category' => 'maintainability',
                             'message' => 'The line does not exist.',
@@ -186,7 +202,7 @@ final class CodeReviewAgentTest extends TestCase
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage(
-            'Review finding field "line" is missing or invalid.'
+            'The review finding source_line does not match the reviewed source.'
         );
 
         $agent->review(
@@ -205,7 +221,8 @@ final class CodeReviewAgentTest extends TestCase
                 json_encode([
                     'findings' => [
                         [
-                            'line' => 5,
+                            'line' => 1,
+                            'source_line' => '<?php echo "Hello World";',
                             'severity' => 'critical',
                             'category' => 'security',
                             'message' => 'SQL injection.',
@@ -270,6 +287,7 @@ final class CodeReviewAgentTest extends TestCase
                     'findings' => [
                         [
                             'line' => '5',
+                            'source_line' => '<?php echo "Hello World";',
                             'severity' => 'critical',
                             'category' => 'security',
                             'message' => 'SQL injection.',
@@ -303,6 +321,7 @@ final class CodeReviewAgentTest extends TestCase
                     'findings' => [
                         [
                             'line' => 0,
+                            'source_line' => '<?php echo "Hello World";',
                             'severity' => 'critical',
                             'category' => 'security',
                             'message' => 'SQL injection.',
@@ -336,6 +355,7 @@ final class CodeReviewAgentTest extends TestCase
                     'findings' => [
                         [
                             'line' => 1,
+                            'source_line' => '<?php echo "Hello World";',
                             'severity' => 'unknown',
                             'category' => 'security',
                             'message' => 'Something is wrong.',
@@ -402,6 +422,7 @@ final class CodeReviewAgentTest extends TestCase
                     'findings' => [
                         [
                             'line' => 3,
+                            'source_line' => 'return false;',
                             'severity' => 'medium',
                             'category' => 'bug',
                             'message' => 'The return value can be false.',
@@ -425,6 +446,53 @@ final class CodeReviewAgentTest extends TestCase
 
         self::assertCount(1, $results);
         self::assertSame(42, $results->getResult('unit-8')?->getFindings()->get(0)->getLine());
+    }
+
+    public function testItCorrectsTheReportedLineUsingTheExactSourceLine(): void
+    {
+        $llm = $this->createStub(LlmInterface::class);
+        $llm
+            ->method('generateJson')
+            ->willReturn(json_encode([
+                'units' => [
+                    [
+                        'unit_id' => 'unit-1',
+                        'findings' => [
+                            [
+                                'line' => 284,
+                                'source_line' => 'echo 66;',
+                                'severity' => 'low',
+                                'category' => 'code_smell',
+                                'message' => 'Unreachable code after return.',
+                                'suggestion' => 'Remove the unreachable statement.',
+                            ],
+                        ],
+                    ],
+                ],
+            ], JSON_THROW_ON_ERROR));
+
+        $agent = $this->createAgent($llm);
+        $batch = new ReviewUnitBatch([
+            new ReviewUnit(
+                'unit-1',
+                'src/Example.php',
+                270,
+                <<<'PHP'
+<?php
+return;
+
+echo 66;
+foreach ($items as $item) {}
+PHP,
+            ),
+        ]);
+
+        $results = $agent->reviewBatch($batch);
+
+        self::assertSame(
+            273,
+            $results->getResult('unit-1')?->getFindings()->get(0)->getLine(),
+        );
     }
 
     public function testItRetriesBatchUnitsIndividuallyWhenTheLlmReturnsInvalidJson(): void
