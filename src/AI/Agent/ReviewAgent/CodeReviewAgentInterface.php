@@ -1,6 +1,6 @@
 <?php
 
-namespace App\AI\Agent;
+namespace App\AI\Agent\ReviewAgent;
 
 use App\AI\DTO\Agent\ReviewUnitBatch;
 use App\AI\DTO\Agent\ReviewUnitResults;

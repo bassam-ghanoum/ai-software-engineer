@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\AI\Workflow;
 
-use App\AI\Agent\CodeReviewAgentInterface;
+use App\AI\Agent\ReviewAgent\CodeReviewAgentInterface;
 use App\AI\DTO\Agent\ReviewUnitBatch;
 use App\AI\DTO\Agent\ReviewUnitResults;
 use App\AI\DTO\Git\ChangedPhpFiles;

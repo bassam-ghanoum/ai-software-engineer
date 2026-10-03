@@ -1,8 +1,9 @@
 <?php
 
-namespace App\Tests\AI\Agent;
+namespace App\Tests\AI\Agent\ReviewAgent;
 
-use App\AI\Agent\CodeReviewAgent;
+use App\AI\Agent\ReviewAgent\CodeReviewAgent;
+use App\AI\Agent\ReviewAgent\CodeReviewAgentInterface;
 use App\AI\LLM\GeminiLlm;
 use App\AI\LLM\LlmInterface;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
@@ -34,7 +35,7 @@ final class CodeReviewAgentContainerTest extends KernelTestCase
         ]);
 
         $agent = self::getContainer()->get(
-            \App\AI\Agent\CodeReviewAgentInterface::class
+            CodeReviewAgentInterface::class
         );
 
         self::assertInstanceOf(CodeReviewAgent::class, $agent);
