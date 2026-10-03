@@ -177,23 +177,21 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
             || !isset($data['units'])
             || !is_array($data['units'])
         ) {
-            throw new \RuntimeException(
-                'The LLM batch response does not contain a valid units array.',
-            );
+            return $this->reviewUnitsIndividually($batch);
         }
 
         $results = [];
 
         foreach ($data['units'] as $review) {
             if (!is_array($review) || !is_string($review['unit_id'] ?? null)) {
-                throw new \RuntimeException('Each batch review must contain a unit_id.');
+                return $this->reviewUnitsIndividually($batch);
             }
 
             $unitId = $review['unit_id'];
             $unit = $expected[$unitId] ?? null;
 
             if (!$unit instanceof ReviewUnit || isset($results[$unitId])) {
-                throw new \RuntimeException('The LLM returned an unknown or duplicate review unit ID.');
+                return $this->reviewUnitsIndividually($batch);
             }
 
             if (!isset($review['findings']) || !is_array($review['findings'])) {
@@ -249,9 +247,36 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
         }
 
         if (count($results) !== count($expected)) {
-            throw new \RuntimeException(
-                'The LLM omitted one or more review units from the batch response.',
-            );
+            return $this->reviewUnitsIndividually($batch);
+        }
+
+        return new ReviewUnitResults($results);
+    }
+
+    private function reviewUnitsIndividually(ReviewUnitBatch $batch): ReviewUnitResults
+    {
+        $results = [];
+
+        foreach ($batch as $unit) {
+            $result = $this->review($unit->filePath, $unit->code);
+
+            if ($unit->startLine > 1) {
+                $findings = [];
+
+                foreach ($result->getFindings() as $finding) {
+                    $findings[] = new ReviewFinding(
+                        $finding->getLine() + $unit->startLine - 1,
+                        $finding->getSeverity(),
+                        $finding->getCategory(),
+                        $finding->getMessage(),
+                        $finding->getSuggestion(),
+                    );
+                }
+
+                $result = new ReviewResult($findings);
+            }
+
+            $results[$unit->id] = $result;
         }
 
         return new ReviewUnitResults($results);

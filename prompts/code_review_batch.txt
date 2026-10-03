@@ -22,7 +22,7 @@ Return ONLY valid JSON with exactly this structure:
   ]
 }
 
-Return exactly one units entry for every supplied unit_id, including units with no findings. Do not return unknown or duplicate unit IDs. Do not include Markdown or text outside JSON.
+Copy each unit_id exactly as supplied; it is an opaque correlation key. Return exactly one units entry for every supplied unit_id, including units with no findings. Do not return unknown or duplicate unit IDs. Do not include Markdown or text outside JSON.
 
 Source units:
 %%UNITS%%
