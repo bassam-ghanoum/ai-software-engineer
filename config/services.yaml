@@ -34,7 +34,7 @@ services:
             $promptsDirectory: '%kernel.project_dir%/prompts'
     App\AI\Git\ChangedCodeProviderInterface:
         alias: App\AI\Git\GitChangedCodeProvider
-    App\AI\Agent\CodeReviewAgentInterface:
-        alias: App\AI\Agent\CodeReviewAgent
+    App\AI\Agent\ReviewAgent\CodeReviewAgentInterface:
+        alias: App\AI\Agent\ReviewAgent\CodeReviewAgent
     App\AI\Workflow\CodeReviewWorkflowInterface:
         alias: App\AI\Workflow\CodeReviewWorkflow

@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\AI\Agent;
+namespace App\AI\Agent\ReviewAgent;
 
+use App\AI\Agent\PromptTemplateLoader;
 use App\AI\DTO\Agent\ReviewUnit;
 use App\AI\DTO\Agent\ReviewUnitBatch;
 use App\AI\DTO\Agent\ReviewUnitResults;

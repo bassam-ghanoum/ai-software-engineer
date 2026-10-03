@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\AI\Workflow;
 
-use App\AI\Agent\CodeReviewAgentInterface;
+use App\AI\Agent\ReviewAgent\CodeReviewAgentInterface;
 use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Git\ChangedCodeProviderInterface;
 use App\AI\Review\ReviewResult;

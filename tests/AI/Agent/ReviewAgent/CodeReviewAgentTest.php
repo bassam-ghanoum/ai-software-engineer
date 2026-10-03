@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace App\Tests\AI\Agent;
+namespace App\Tests\AI\Agent\ReviewAgent;
 
-use App\AI\Agent\CodeReviewAgent;
 use App\AI\Agent\PromptTemplateLoader;
+use App\AI\Agent\ReviewAgent\CodeReviewAgent;
 use App\AI\DTO\Agent\ReviewUnit;
 use App\AI\DTO\Agent\ReviewUnitBatch;
 use App\AI\LLM\LlmInterface;
