@@ -30,6 +30,7 @@ final class CodeReviewAgentTest extends TestCase
                     );
                     self::assertStringNotContainsString('%%FILE_PATH%%', $prompt);
                     self::assertStringNotContainsString('%%CODE%%', $prompt);
+                    self::assertStringContainsString('"source_line"', $prompt);
 
                     return true;
                 },
@@ -95,6 +96,15 @@ PHP
         );
 
         self::assertSame(
+            'SQL injection vulnerability detected.',
+            $result->getFindings()->get(0)->getMessage(),
+        );
+        self::assertSame(
+            'Use a prepared statement.',
+            $result->getFindings()->get(0)->getSuggestion(),
+        );
+
+        self::assertSame(
             12,
             $result->getFindings()->get(1)->getLine()
         );
@@ -108,6 +118,41 @@ PHP
             'error_handling',
             $result->getFindings()->get(1)->getCategory()
         );
+
+        self::assertSame(
+            'Database errors are not handled.',
+            $result->getFindings()->get(1)->getMessage(),
+        );
+        self::assertSame(
+            'Handle query failures explicitly.',
+            $result->getFindings()->get(1)->getSuggestion(),
+        );
+    }
+
+    public function testItRejectsAnEmptyFilePathWithoutCallingTheLlm(): void
+    {
+        $llm = $this->createMock(LlmInterface::class);
+        $llm->expects(self::never())->method('generateJson');
+
+        $agent = $this->createAgent($llm);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The file path cannot be empty.');
+
+        $agent->review('  ', '<?php echo "Hello World";');
+    }
+
+    public function testItRejectsEmptySourceWithoutCallingTheLlm(): void
+    {
+        $llm = $this->createMock(LlmInterface::class);
+        $llm->expects(self::never())->method('generateJson');
+
+        $agent = $this->createAgent($llm);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('The code cannot be empty.');
+
+        $agent->review('test.php', '');
     }
 
     public function testItRejectsInvalidJson(): void
@@ -402,6 +447,64 @@ PHP
         self::assertCount(0, $result->getFindings());
     }
 
+    public function testItAcceptsAnEmptyBatchWithoutCallingTheLlm(): void
+    {
+        $llm = $this->createMock(LlmInterface::class);
+        $llm->expects(self::never())->method('generateJson');
+
+        $results = $this->createAgent($llm)->reviewBatch(new ReviewUnitBatch([]));
+
+        self::assertCount(0, $results);
+    }
+
+    public function testItDoesNotRetryWhenTheBatchLlmRequestFails(): void
+    {
+        $exception = new \RuntimeException('LLM request failed.');
+        $llm = $this->createMock(LlmInterface::class);
+        $llm
+            ->expects(self::once())
+            ->method('generateJson')
+            ->willThrowException($exception);
+
+        $batch = new ReviewUnitBatch([
+            new ReviewUnit('unit-1', 'src/Example.php', 1, '<?php echo 1;'),
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('LLM request failed.');
+
+        $this->createAgent($llm)->reviewBatch($batch);
+    }
+
+    public function testItRejectsAnAmbiguousSourceLineWhenTheReportedLineDoesNotMatch(): void
+    {
+        $llm = $this->createStub(LlmInterface::class);
+        $llm
+            ->method('generateJson')
+            ->willReturn(json_encode([
+                'findings' => [
+                    [
+                        'line' => 1,
+                        'source_line' => 'echo 1;',
+                        'severity' => 'low',
+                        'category' => 'code_smell',
+                        'message' => 'The statement is duplicated.',
+                        'suggestion' => 'Keep only one statement.',
+                    ],
+                ],
+            ], JSON_THROW_ON_ERROR));
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(
+            'The review finding source_line occurs more than once and cannot be located uniquely.',
+        );
+
+        $this->createAgent($llm)->review(
+            'test.php',
+            "<?php\necho 1;\necho 1;",
+        );
+    }
+
     public function testItRetriesBatchUnitsIndividuallyWhenTheLlmReturnsUnknownUnitIds(): void
     {
         $llm = $this->createMock(LlmInterface::class);
@@ -450,9 +553,19 @@ PHP
 
     public function testItCorrectsTheReportedLineUsingTheExactSourceLine(): void
     {
-        $llm = $this->createStub(LlmInterface::class);
+        $llm = $this->createMock(LlmInterface::class);
         $llm
+            ->expects(self::once())
             ->method('generateJson')
+            ->with(self::callback(
+                static function (string $prompt): bool {
+                    self::assertStringContainsString('"unit_id":"unit-1"', $prompt);
+                    self::assertStringContainsString('"start_line":270', $prompt);
+                    self::assertStringContainsString('"end_line":274', $prompt);
+
+                    return true;
+                },
+            ))
             ->willReturn(json_encode([
                 'units' => [
                     [
@@ -559,7 +672,7 @@ PHP,
     {
         return new CodeReviewAgent(
             $llm,
-            new PromptTemplateLoader(dirname(__DIR__, 3) . '/prompts'),
+            new PromptTemplateLoader(dirname(__DIR__, 4) . '/prompts'),
         );
     }
 }
