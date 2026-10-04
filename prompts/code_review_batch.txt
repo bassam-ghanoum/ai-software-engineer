@@ -4,6 +4,7 @@ Review each supplied source unit for bugs, security vulnerabilities, performance
 
 Each unit has a unique unit_id, a file_path, an inclusive start_line and end_line, and source code. Report findings only for issues visible in that unit. Line numbers must be absolute 1-based lines from the original file and must fall within that unit's supplied line range.
 For every finding, include "source_line": the exact source line containing the issue, copied verbatim including whitespace. The line and source_line must identify the same line.
+Also include "source_before" and "source_after": the exact immediately adjacent source lines, including whitespace. Use null only when the finding is on the first or last line of the source unit, respectively. These context lines disambiguate identical lines repeated in a unit.
 
 Return ONLY valid JSON with exactly this structure:
 {
@@ -14,6 +15,8 @@ Return ONLY valid JSON with exactly this structure:
         {
           "line": 5,
           "source_line": "the exact source line copied verbatim",
+          "source_before": "the exact preceding source line, or null if this is the first line",
+          "source_after": "the exact following source line, or null if this is the last line",
           "severity": "critical|high|medium|low",
           "category": "security|bug|performance|maintainability|validation|error_handling|code_smell",
           "message": "A concise explanation of the problem.",

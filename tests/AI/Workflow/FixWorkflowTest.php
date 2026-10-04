@@ -526,6 +526,95 @@ PHP;
         );
     }
 
+    public function testRetriesIncompletePhpOutputAndWritesTheNextValidResponse(): void
+    {
+        $fixAgent = $this->createMock(FixAgentInterface::class);
+        $fileProvider = $this->createMock(SourceFileProviderInterface::class);
+        $sourceValidator = $this->createMock(SourceValidatorInterface::class);
+        $fixScopeValidator = $this->createMock(FixScopeValidatorInterface::class);
+        $review = $this->createReviewResult();
+        $source = '<?php echo "Original";';
+        $incompleteSource = "<?php\nfunction example() {\n";
+        $fixedSource = '<?php echo "Fixed";';
+
+        $fileProvider
+            ->expects(self::once())
+            ->method('exists')
+            ->with('src/Test.php')
+            ->willReturn(true);
+        $fileProvider
+            ->expects(self::once())
+            ->method('read')
+            ->with('src/Test.php')
+            ->willReturn($source);
+        $fileProvider
+            ->expects(self::once())
+            ->method('write')
+            ->with('src/Test.php', $fixedSource);
+
+        $fixAgent
+            ->expects(self::exactly(2))
+            ->method('fix')
+            ->willReturnCallback(
+                static function (
+                    string $filePath,
+                    string $sourceCode,
+                    ReviewResult $reviewResult,
+                    ?string $previousFailure,
+                ) use ($incompleteSource, $fixedSource, $review, $source): string {
+                    self::assertSame('src/Test.php', $filePath);
+                    self::assertSame($source, $sourceCode);
+                    self::assertSame($review, $reviewResult);
+
+                    if ($previousFailure === null) {
+                        return $incompleteSource;
+                    }
+
+                    self::assertStringContainsString(
+                        'unexpected end of file',
+                        $previousFailure,
+                    );
+
+                    return $fixedSource;
+                },
+            );
+
+        $sourceValidator
+            ->expects(self::exactly(2))
+            ->method('validate')
+            ->willReturnCallback(
+                static function (string $filePath, string $fixedSource) use ($incompleteSource): void {
+                    if ($fixedSource === $incompleteSource) {
+                        throw new RuntimeException(
+                            'Invalid PHP source: syntax error, unexpected end of file.',
+                        );
+                    }
+                },
+            );
+
+        $fixScopeValidator
+            ->expects(self::once())
+            ->method('validate')
+            ->with('src/Test.php', $source, $fixedSource, $review);
+
+        $workflow = new FixWorkflow(
+            $fixAgent,
+            $fileProvider,
+            $sourceValidator,
+            $fixScopeValidator,
+        );
+
+        $result = $workflow->fix(
+            new ReviewBatch(['src/Test.php' => $review]),
+            true,
+        );
+
+        self::assertSame(
+            ['src/Test.php' => $fixedSource],
+            iterator_to_array($result->getFixedFiles()),
+        );
+    }
+
     public function testDoesNotWriteAnyFileUntilAllFilesPassValidation(): void
     {
         $fixAgent = $this->createMock(FixAgentInterface::class);

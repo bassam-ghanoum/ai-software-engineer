@@ -11,6 +11,7 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 final class GeminiLlm implements LlmInterface
 {
     private const MAX_RETRIES = 3;
+    private const MAX_OUTPUT_TOKENS = 32768;
 
     public function __construct(
         private readonly HttpClientInterface $httpClient,
@@ -32,6 +33,9 @@ final class GeminiLlm implements LlmInterface
                     ],
                 ],
             ],
+            'generationConfig' => [
+                'maxOutputTokens' => self::MAX_OUTPUT_TOKENS,
+            ],
         ]);
 
         return $this->extractText($data);
@@ -51,6 +55,7 @@ final class GeminiLlm implements LlmInterface
             ],
             'generationConfig' => [
                 'responseMimeType' => 'application/json',
+                'maxOutputTokens' => self::MAX_OUTPUT_TOKENS,
             ],
         ]);
 
@@ -130,6 +135,14 @@ final class GeminiLlm implements LlmInterface
      */
     private function extractText(array $data): string
     {
+        $finishReason = $data['candidates'][0]['finishReason'] ?? null;
+
+        if ($finishReason === 'MAX_TOKENS') {
+            throw new RuntimeException(
+                'Gemini response was truncated because it reached the maximum output token limit.',
+            );
+        }
+
         $parts = $data['candidates'][0]['content']['parts'] ?? null;
 
         if (!is_array($parts)) {

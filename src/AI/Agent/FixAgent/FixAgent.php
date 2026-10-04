@@ -7,6 +7,7 @@ namespace App\AI\Agent\FixAgent;
 use App\AI\Agent\PromptTemplateLoader;
 use App\AI\LLM\LlmInterface;
 use App\AI\Review\ReviewResult;
+use JsonException;
 use RuntimeException;
 
 final class FixAgent implements FixAgentInterface
@@ -36,9 +37,13 @@ final class FixAgent implements FixAgentInterface
             $previousFailure,
         );
 
-        $generatedSource = $this->llm->generate($prompt);
+        $generatedEdits = $this->llm->generateJson($prompt);
 
-        return $this->extractSource($generatedSource, $filePath);
+        return $this->applyEdits(
+            $generatedEdits,
+            $sourceCode,
+            $filePath,
+        );
     }
 
     private function buildPrompt(
@@ -101,110 +106,135 @@ FEEDBACK;
         return implode("\n", $findings);
     }
 
-    private function extractSource(
-        string $generatedSource,
+    private function applyEdits(
+        string $generatedEdits,
+        string $sourceCode,
         string $filePath,
     ): string {
-        $source = trim($generatedSource);
-
-        if ($source === '') {
+        try {
+            $data = json_decode(
+                $generatedEdits,
+                true,
+                512,
+                JSON_THROW_ON_ERROR,
+            );
+        } catch (JsonException $exception) {
             throw new RuntimeException(
-                sprintf(
-                    'AI-Code-Fix-agent returned empty source for %s.',
-                    $filePath,
-                ),
+                sprintf('AI-Code-Fix-agent returned invalid JSON edits for %s.', $filePath),
+                0,
+                $exception,
             );
         }
 
-        /*
-         * Handle Markdown code fences if the model ignores the instruction.
-         */
         if (
-            str_starts_with($source, '```php')
-            && str_ends_with($source, '```')
+            !is_array($data)
+            || array_keys($data) !== ['edits']
+            || !is_array($data['edits'])
+            || !array_is_list($data['edits'])
         ) {
-            $source = trim(substr($source, 6, -3));
-        } elseif (
-            str_starts_with($source, '```')
-            && str_ends_with($source, '```')
-        ) {
-            $source = trim(substr($source, 3, -3));
+            throw new RuntimeException(
+                sprintf('AI-Code-Fix-agent returned an invalid edit structure for %s.', $filePath),
+            );
         }
 
-        /*
-         * Handle the source markers sometimes returned by the model.
-         */
-        $beginMarker = '---BEGIN SOURCE---';
-        $endMarker = '---END SOURCE---';
+        $edits = [];
+        $lineEnding = $this->getLineEnding($sourceCode);
 
-        $beginPosition = strpos($source, $beginMarker);
-        $endPosition = strrpos($source, $endMarker);
-
-        if ($beginPosition !== false) {
-            $source = substr(
-                $source,
-                $beginPosition + strlen($beginMarker),
-            );
-
-            $endPosition = strrpos($source, $endMarker);
-
-            if ($endPosition !== false) {
-                $source = substr($source, 0, $endPosition);
+        foreach ($data['edits'] as $edit) {
+            if (
+                !is_array($edit)
+                || count($edit) !== 2
+                || !array_key_exists('original', $edit)
+                || !array_key_exists('replacement', $edit)
+                || !is_string($edit['original'])
+                || $edit['original'] === ''
+                || !is_string($edit['replacement'])
+            ) {
+                throw new RuntimeException(
+                    sprintf('AI-Code-Fix-agent returned an invalid edit for %s.', $filePath),
+                );
             }
-        }
 
-        /*
-         * Remove accidental AI-Code-Fix-agent presentation markers.
-         */
-        $source = preg_replace(
-            '/^---\s*AI-Code-Fix-agent generated source.*?---\s*$/mi',
-            '',
-            $source,
-        ) ?? $source;
-
-        $source = preg_replace(
-            '/^---\s*End AI-Code-Fix-agent generated source.*?---\s*$/mi',
-            '',
-            $source,
-        ) ?? $source;
-
-        $source = trim($source);
-
-        /*
-         * The PHP source must start at the PHP opening tag.
-         */
-        $phpPosition = strpos($source, '<?php');
-
-        if ($phpPosition === false) {
-            throw new RuntimeException(
-                sprintf(
-                    'AI-Code-Fix-agent did not return valid PHP source for %s: missing <?php opening tag.',
-                    $filePath,
-                ),
+            $original = $this->normalizeLineEndings(
+                $edit['original'],
+                $lineEnding,
             );
-        }
-
-        if ($phpPosition > 0) {
-            $source = substr($source, $phpPosition);
-        }
-
-        /*
-         * Safety boundary: no model presentation markers may reach
-         * PhpSourceValidator.
-         */
-        if (
-            str_contains($source, $beginMarker) ||
-            str_contains($source, $endMarker) ||
-            str_contains($source, '```')
-        ) {
-            throw new RuntimeException(
-                sprintf(
-                    'AI-Code-Fix-agent returned source containing unsupported output markers for %s.',
-                    $filePath,
-                ),
+            $replacement = $this->normalizeLineEndings(
+                $edit['replacement'],
+                $lineEnding,
             );
+            $position = strpos($sourceCode, $original);
+
+            if (
+                $position === false
+                || strpos(
+                    $sourceCode,
+                    $original,
+                    $position + strlen($original),
+                ) !== false
+            ) {
+                throw new RuntimeException(
+                    sprintf(
+                        'AI-Code-Fix-agent edit for %s must match exactly one source snippet.',
+                        $filePath,
+                    ),
+                );
+            }
+
+            if ($original === $replacement) {
+                throw new RuntimeException(
+                    sprintf('AI-Code-Fix-agent returned a no-op edit for %s.', $filePath),
+                );
+            }
+
+            $edits[] = [
+                'position' => $position,
+                'original' => $original,
+                'replacement' => $replacement,
+            ];
         }
 
-        return rtrim($source) . PHP_EOL;
+        usort(
+            $edits,
+            static fn (array $left, array $right): int => $right['position'] <=> $left['position'],
+        );
+
+        $lastStart = strlen($sourceCode);
+
+        foreach ($edits as $edit) {
+            $end = $edit['position'] + strlen($edit['original']);
+
+            if ($end > $lastStart) {
+                throw new RuntimeException(
+                    sprintf('AI-Code-Fix-agent returned overlapping edits for %s.', $filePath),
+                );
+            }
+
+            $sourceCode = substr_replace(
+                $sourceCode,
+                $edit['replacement'],
+                $edit['position'],
+                strlen($edit['original']),
+            );
+            $lastStart = $edit['position'];
+        }
+
+        return $sourceCode;
+    }
+
+    private function getLineEnding(string $sourceCode): string
+    {
+        if (preg_match('/\r\n|\r|\n/', $sourceCode, $matches) === 1) {
+            return $matches[0];
+        }
+
+        return "\n";
+    }
+
+    private function normalizeLineEndings(
+        string $source,
+        string $lineEnding,
+    ): string {
+        return preg_replace('/\r\n|\r|\n/', $lineEnding, $source) ?? $source;
     }
 }

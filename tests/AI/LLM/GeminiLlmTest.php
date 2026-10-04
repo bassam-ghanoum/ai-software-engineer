@@ -48,6 +48,7 @@ final class GeminiLlmTest extends TestCase
                         $options['headers']['Content-Type'] === 'application/json'
                         && $options['headers']['x-goog-api-key'] === 'test-api-key'
                         && $options['timeout'] === 120
+                        && $options['json']['generationConfig']['maxOutputTokens'] === 32768
                         && $options['json']['contents'][0]['parts'][0]['text'] === 'Test prompt';
                 })
             )
@@ -105,6 +106,47 @@ final class GeminiLlmTest extends TestCase
             '<?php return "complete";',
             $llm->generate('Test prompt'),
         );
+    }
+
+    public function testGenerateRejectsResponseTruncatedAtOutputTokenLimit(): void
+    {
+        $response = $this->createStub(ResponseInterface::class);
+        $response
+            ->method('getStatusCode')
+            ->willReturn(200);
+        $response
+            ->method('toArray')
+            ->willReturn([
+                'candidates' => [
+                    [
+                        'finishReason' => 'MAX_TOKENS',
+                        'content' => [
+                            'parts' => [
+                                ['text' => '<?php function incomplete() {'],
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+
+        $httpClient = $this->createStub(HttpClientInterface::class);
+        $httpClient
+            ->method('request')
+            ->willReturn($response);
+
+        $llm = new GeminiLlm(
+            $httpClient,
+            'test-api-key',
+            'gemini-2.5-flash',
+            0,
+        );
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage(
+            'Gemini response was truncated because it reached the maximum output token limit.',
+        );
+
+        $llm->generate('Test prompt');
     }
 
     public function testGenerateDoesNotIncludeResponsePayloadWhenTextIsMissing(): void
@@ -193,7 +235,8 @@ final class GeminiLlmTest extends TestCase
                         $options['headers']['Content-Type'] === 'application/json'
                         && $options['headers']['x-goog-api-key'] === 'test-api-key'
                         && $options['timeout'] === 120
-                        && $options['json']['generationConfig']['responseMimeType'] === 'application/json';
+                        && $options['json']['generationConfig']['responseMimeType'] === 'application/json'
+                        && $options['json']['generationConfig']['maxOutputTokens'] === 32768;
                 })
             )
             ->willReturn($response);

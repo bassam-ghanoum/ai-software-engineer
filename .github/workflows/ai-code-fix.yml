@@ -8,7 +8,7 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  actions: write
+  actions: read
 
 concurrency:
   group: ai-fix-pr-${{ github.event.issue.number }}
@@ -21,7 +21,7 @@ jobs:
     if: >
       github.event.issue.pull_request &&
       github.event.comment.user.login == github.event.issue.user.login &&
-      startsWith(github.event.comment.body, '@ai-fix approve')
+      github.event.comment.body == '@ai-fix approve'
 
     runs-on: ubuntu-latest
 

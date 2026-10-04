@@ -130,11 +130,15 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
                 }
             }
 
+            $sourceContext = $this->getSourceContext($finding);
+
             $findings[] = new ReviewFinding(
                 line: $this->resolveSourceLine(
+                    $filePath,
                     $code,
                     $finding['line'],
                     $finding['source_line'],
+                    $sourceContext,
                 ),
                 severity: $finding['severity'],
                 category: $finding['category'],
@@ -260,10 +264,13 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
                     }
                 }
 
+                $sourceContext = $this->getSourceContext($finding);
                 $localLine = $this->resolveSourceLine(
+                    $unit->filePath,
                     $unit->code,
                     $finding['line'] - $unit->startLine + 1,
                     $finding['source_line'],
+                    $sourceContext,
                 );
                 $absoluteLine = $unit->startLine + $localLine - 1;
 
@@ -293,9 +300,11 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
     }
 
     private function resolveSourceLine(
+        string $filePath,
         string $code,
         int $reportedLine,
         string $sourceLine,
+        ?array $sourceContext = null,
     ): int {
         $sourceLines = preg_split('/\R/', $code);
 
@@ -305,7 +314,10 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
 
         if (
             isset($sourceLines[$reportedLine - 1])
-            && $sourceLines[$reportedLine - 1] === $sourceLine
+            && $this->sourceLinesMatch(
+                $sourceLines[$reportedLine - 1],
+                $sourceLine,
+            )
         ) {
             return $reportedLine;
         }
@@ -313,7 +325,7 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
         $matchingLines = [];
 
         foreach ($sourceLines as $index => $line) {
-            if ($line === $sourceLine) {
+            if ($this->sourceLinesMatch($line, $sourceLine)) {
                 $matchingLines[] = $index + 1;
             }
         }
@@ -324,13 +336,132 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
 
         if ($matchingLines === []) {
             throw new \RuntimeException(
-                'The review finding source_line does not match the reviewed source.',
+                $this->sourceLineMismatchMessage(
+                    $filePath,
+                    $reportedLine,
+                    $sourceLine,
+                    $sourceContext,
+                    $sourceLines,
+                ),
             );
+        }
+
+        if ($sourceContext !== null) {
+            $contextMatchingLines = [];
+
+            foreach ($matchingLines as $lineNumber) {
+                $index = $lineNumber - 1;
+                $beforeMatches = $sourceContext['before'] === null
+                    ? $index === 0
+                    : (
+                        isset($sourceLines[$index - 1])
+                        && $this->sourceLinesMatch(
+                            $sourceLines[$index - 1],
+                            $sourceContext['before'],
+                        )
+                    );
+                $afterMatches = $sourceContext['after'] === null
+                    ? $index === count($sourceLines) - 1
+                    : (
+                        isset($sourceLines[$index + 1])
+                        && $this->sourceLinesMatch(
+                            $sourceLines[$index + 1],
+                            $sourceContext['after'],
+                        )
+                    );
+
+                if ($beforeMatches && $afterMatches) {
+                    $contextMatchingLines[] = $lineNumber;
+                }
+            }
+
+            if (count($contextMatchingLines) === 1) {
+                return $contextMatchingLines[0];
+            }
         }
 
         throw new \RuntimeException(
             'The review finding source_line occurs more than once and cannot be located uniquely.',
         );
+    }
+
+    /**
+     * @param array{before: ?string, after: ?string}|null $sourceContext
+     * @param list<string> $sourceLines
+     */
+    private function sourceLineMismatchMessage(
+        string $filePath,
+        int $reportedLine,
+        string $reportedSourceLine,
+        ?array $sourceContext,
+        array $sourceLines,
+    ): string {
+        $excerpt = [];
+        $firstLine = max(1, $reportedLine - 2);
+        $lastLine = min(count($sourceLines), $reportedLine + 2);
+
+        for ($lineNumber = $firstLine; $lineNumber <= $lastLine; $lineNumber++) {
+            $excerpt[] = sprintf(
+                '%d: %s',
+                $lineNumber,
+                var_export($sourceLines[$lineNumber - 1], true),
+            );
+        }
+
+        $actualSourceLine = isset($sourceLines[$reportedLine - 1])
+            ? var_export($sourceLines[$reportedLine - 1], true)
+            : '<line out of range>';
+
+        return sprintf(
+            'The review finding source_line does not match the reviewed source. '
+            . 'File: %s; reported line: %d; reported source_line: %s; '
+            . 'reported context: %s; actual source at reported line: %s; '
+            . 'nearby source lines: [%s].',
+            $filePath,
+            $reportedLine,
+            var_export($reportedSourceLine, true),
+            var_export($sourceContext, true),
+            $actualSourceLine,
+            implode('; ', $excerpt),
+        );
+    }
+
+    private function sourceLinesMatch(
+        string $sourceLine,
+        string $reportedSourceLine,
+    ): bool {
+        return $sourceLine === $reportedSourceLine
+            || trim($sourceLine) === trim($reportedSourceLine);
+    }
+
+    /**
+     * @param array<string, mixed> $finding
+     * @return array{before: ?string, after: ?string}|null
+     */
+    private function getSourceContext(array $finding): ?array
+    {
+        $hasBefore = array_key_exists('source_before', $finding);
+        $hasAfter = array_key_exists('source_after', $finding);
+
+        if (!$hasBefore && !$hasAfter) {
+            return null;
+        }
+
+        if (
+            !$hasBefore
+            || !$hasAfter
+            || (!is_string($finding['source_before']) && $finding['source_before'] !== null)
+            || (!is_string($finding['source_after']) && $finding['source_after'] !== null)
+        ) {
+            throw new \RuntimeException(
+                'Review finding source context is missing or invalid.',
+            );
+        }
+
+        return [
+            'before' => $finding['source_before'],
+            'after' => $finding['source_after'],
+        ];
     }
 
     private function reviewUnitsIndividually(ReviewUnitBatch $batch): ReviewUnitResults

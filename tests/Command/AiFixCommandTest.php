@@ -281,9 +281,9 @@ JSON;
         $this->expectExceptionMessage('Review result file does not exist: ' . $missingFile);
 
         $command = new AiFixCommand(
-            $this->createMock(CodeReviewWorkflowInterface::class),
+            $this->createStub(CodeReviewWorkflowInterface::class),
             new ReviewResultSerializer(),
-            $this->createMock(FixWorkflowInterface::class),
+            $this->createStub(FixWorkflowInterface::class),
             $this->createStub(GitInterface::class),
         );
 

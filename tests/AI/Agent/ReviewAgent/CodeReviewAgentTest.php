@@ -22,11 +22,12 @@ final class CodeReviewAgentTest extends TestCase
             ->method('generateJson')
             ->with(self::callback(
                 function (string $prompt): bool {
+                    $normalizedPrompt = str_replace(["\r\n", "\r"], "\n", $prompt);
                     self::assertStringContainsString('File:', $prompt);
                     self::assertStringContainsString('test.php', $prompt);
                     self::assertStringContainsString(
-                        '<?php' . PHP_EOL . PHP_EOL . PHP_EOL,
-                        $prompt,
+                        "<?php\n\n\n",
+                        $normalizedPrompt,
                     );
                     self::assertStringNotContainsString('%%FILE_PATH%%', $prompt);
                     self::assertStringNotContainsString('%%CODE%%', $prompt);
@@ -232,7 +233,7 @@ PHP
                 json_encode([
                     'findings' => [
                         [
-                            'line' => 2,
+                            'line' => 1,
                             'source_line' => 'echo 42;',
                             'severity' => 'low',
                             'category' => 'maintainability',
@@ -245,14 +246,91 @@ PHP
 
         $agent = $this->createAgent($llm);
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage(
-            'The review finding source_line does not match the reviewed source.'
+        try {
+            $agent->review(
+                'test.php',
+                '<?php echo "Hello World";'
+            );
+            self::fail('Expected the invalid source line to be rejected.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString(
+                'The review finding source_line does not match the reviewed source.',
+                $exception->getMessage(),
+            );
+            self::assertStringContainsString(
+                'File: test.php; reported line: 1; reported source_line: \'echo 42;\';',
+                $exception->getMessage(),
+            );
+            self::assertStringContainsString(
+                'actual source at reported line: \'<?php echo "Hello World";\'',
+                $exception->getMessage(),
+            );
+            self::assertStringContainsString(
+                'nearby source lines: [1: \'<?php echo "Hello World";\']',
+                $exception->getMessage(),
+            );
+        }
+    }
+
+    public function testItLocatesSourceLineWhenModelOmitsItsIndentation(): void
+    {
+        $llm = $this->createStub(LlmInterface::class);
+        $llm
+            ->method('generateJson')
+            ->willReturn(json_encode([
+                'findings' => [
+                    [
+                        'line' => 2,
+                        'source_line' => 'return false;',
+                        'source_before' => '{',
+                        'source_after' => '}',
+                        'severity' => 'medium',
+                        'category' => 'bug',
+                        'message' => 'The return value indicates failure.',
+                        'suggestion' => 'Handle the failure result.',
+                    ],
+                ],
+            ], JSON_THROW_ON_ERROR));
+
+        $result = $this->createAgent($llm)->review(
+            'test.php',
+            "<?php\nfunction example(): bool\n{\n    return false;\n}",
         );
 
-        $agent->review(
+        self::assertSame(
+            4,
+            $result->getFindings()->get(0)->getLine(),
+        );
+    }
+
+    public function testItUsesUniqueSourceLineWhenModelReportsIncorrectContext(): void
+    {
+        $llm = $this->createStub(LlmInterface::class);
+        $llm
+            ->method('generateJson')
+            ->willReturn(json_encode([
+                'findings' => [
+                    [
+                        'line' => 1,
+                        'source_line' => 'sleep(1);',
+                        'source_before' => 'return;',
+                        'source_after' => '}',
+                        'severity' => 'medium',
+                        'category' => 'performance',
+                        'message' => 'The call delays the request.',
+                        'suggestion' => 'Avoid blocking sleep in request handling.',
+                    ],
+                ],
+            ], JSON_THROW_ON_ERROR));
+
+        $result = $this->createAgent($llm)->review(
             'test.php',
-            '<?php echo "Hello World";'
+            "<?php\nfunction example(): void\n{\n    sleep(1);\n}",
+        );
+
+        self::assertSame(
+            4,
+            $result->getFindings()->get(0)->getLine(),
         );
     }
 
@@ -476,7 +554,7 @@ PHP
         $this->createAgent($llm)->reviewBatch($batch);
     }
 
-    public function testItRejectsAnAmbiguousSourceLineWhenTheReportedLineDoesNotMatch(): void
+    public function testItRejectsAnAmbiguousSourceLineWithoutContextWhenTheReportedLineDoesNotMatch(): void
     {
         $llm = $this->createStub(LlmInterface::class);
         $llm
@@ -502,6 +580,49 @@ PHP
         $this->createAgent($llm)->review(
             'test.php',
             "<?php\necho 1;\necho 1;",
+        );
+    }
+
+    public function testItUsesAdjacentSourceContextToResolveRepeatedLinesInABatch(): void
+    {
+        $llm = $this->createMock(LlmInterface::class);
+        $llm
+            ->expects(self::once())
+            ->method('generateJson')
+            ->willReturn(json_encode([
+                'units' => [
+                    [
+                        'unit_id' => 'unit-1',
+                        'findings' => [
+                            [
+                                'line' => 12,
+                                'source_line' => 'echo 1;',
+                                'source_before' => 'return;',
+                                'source_after' => null,
+                                'severity' => 'low',
+                                'category' => 'code_smell',
+                                'message' => 'The statement is unreachable.',
+                                'suggestion' => 'Remove the unreachable statement.',
+                            ],
+                        ],
+                    ],
+                ],
+            ], JSON_THROW_ON_ERROR));
+
+        $batch = new ReviewUnitBatch([
+            new ReviewUnit(
+                'unit-1',
+                'src/Example.php',
+                10,
+                "<?php\necho 1;\nreturn;\necho 1;",
+            ),
+        ]);
+
+        $results = $this->createAgent($llm)->reviewBatch($batch);
+
+        self::assertSame(
+            13,
+            $results->getResult('unit-1')?->getFindings()->get(0)->getLine(),
         );
     }
 
