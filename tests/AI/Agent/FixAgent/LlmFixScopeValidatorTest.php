@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\AI\Agent\FixAgent;
 
+use App\AI\Agent\PromptTemplateLoader;
 use App\AI\Agent\FixAgent\LlmFixScopeValidator;
 use App\AI\LLM\LlmInterface;
 use App\AI\Review\ReviewFinding;
@@ -25,7 +26,7 @@ final class LlmFixScopeValidatorTest extends TestCase
                 'reason' => 'The fix only addresses the reported issue.',
             ], JSON_THROW_ON_ERROR));
 
-        $validator = new LlmFixScopeValidator($llm);
+        $validator = $this->createValidator($llm);
 
         $reviewResult = $this->createReviewResult();
 
@@ -51,7 +52,7 @@ final class LlmFixScopeValidatorTest extends TestCase
                 'reason' => 'The return value was changed without being required.',
             ], JSON_THROW_ON_ERROR));
 
-        $validator = new LlmFixScopeValidator($llm);
+        $validator = $this->createValidator($llm);
 
         $reviewResult = $this->createReviewResult();
 
@@ -77,7 +78,7 @@ final class LlmFixScopeValidatorTest extends TestCase
             ->method('generateJson')
             ->willReturn('not valid json');
 
-        $validator = new LlmFixScopeValidator($llm);
+        $validator = $this->createValidator($llm);
 
         $reviewResult = $this->createReviewResult();
 
@@ -103,7 +104,7 @@ final class LlmFixScopeValidatorTest extends TestCase
             ->method('generateJson')
             ->willReturn('{"approved":true}');
 
-        $validator = new LlmFixScopeValidator($llm);
+        $validator = $this->createValidator($llm);
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage(
@@ -142,7 +143,7 @@ final class LlmFixScopeValidatorTest extends TestCase
                 'reason' => 'Only the reported syntax issue was fixed.',
             ], JSON_THROW_ON_ERROR));
 
-        $validator = new LlmFixScopeValidator($llm);
+        $validator = $this->createValidator($llm);
 
         $validator->validate(
             'fixtures/test.php',
@@ -163,5 +164,13 @@ final class LlmFixScopeValidatorTest extends TestCase
                 'Remove the * operator.',
             ),
         ]);
+    }
+
+    private function createValidator(LlmInterface $llm): LlmFixScopeValidator
+    {
+        return new LlmFixScopeValidator(
+            $llm,
+            new PromptTemplateLoader(dirname(__DIR__, 4) . '/prompts'),
+        );
     }
 }

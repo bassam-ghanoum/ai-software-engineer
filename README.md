@@ -123,7 +123,9 @@ Original source
 ReviewResult
 ```
 
-It generates a corrected version of the source.
+It returns minimal JSON edits anchored to exact snippets from the original
+source. The application applies those edits locally, preserving all unchanged
+source verbatim instead of relying on the model to regenerate the entire file.
 
 AI-Code-Fix-Agent does **not** perform a new code review after generating the fix.
 
@@ -192,7 +194,10 @@ ReviewResult
 AI-Code-Fix-Agent
      │
      ▼
-Generated source
+Exact JSON source edits
+     │
+     ▼
+Apply edits to original source
      │
      ▼
 PHP Syntax Validation
@@ -644,7 +649,8 @@ After reviewing the findings, the developer can explicitly approve the fix:
 docker exec agents_system php bin/console ai:fix HEAD~1 HEAD --approved
 ```
 
-AI-Code-Fix-Agent generates the corrected source.
+AI-Code-Fix-Agent returns minimal JSON edits. The application applies them to
+the original source, then validates the complete resulting file.
 
 The generated source then passes:
 

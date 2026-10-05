@@ -180,4 +180,50 @@ final class AiReviewCommandTest extends TestCase
             }
         }
     }
+
+    public function testItPrintsNoFindingsForFilesThatReviewCleanly(): void
+    {
+        $workflow = $this->createMock(
+            CodeReviewWorkflowInterface::class
+        );
+
+        $workflow
+            ->expects(self::once())
+            ->method('reviewChanges')
+            ->with('FROM_SHA', 'TO_SHA')
+            ->willReturn(new ReviewBatch([
+                'fixtures/clean.php' => new ReviewResult([]),
+            ]));
+
+        $serializer = new ReviewResultSerializer();
+        $outputFile = tempnam(sys_get_temp_dir(), 'ai-review-');
+
+        self::assertNotFalse($outputFile);
+
+        try {
+            $command = new AiReviewCommand($workflow, $serializer);
+            $application = new Application();
+            $application->addCommand($command);
+
+            $commandTester = new CommandTester($application->find('ai:review'));
+
+            $exitCode = $commandTester->execute([
+                'from' => 'FROM_SHA',
+                'to' => 'TO_SHA',
+                '--output' => $outputFile,
+            ]);
+
+            self::assertSame(0, $exitCode);
+            self::assertStringContainsString('No findings.', $commandTester->getDisplay());
+            self::assertStringContainsString('Review result written to:', $commandTester->getDisplay());
+
+            $data = json_decode((string) file_get_contents($outputFile), true, 512, JSON_THROW_ON_ERROR);
+            self::assertSame('TO_SHA', $data['commit_sha']);
+            self::assertSame([], $data['reviews']['fixtures/clean.php']['findings']);
+        } finally {
+            if (is_file($outputFile)) {
+                unlink($outputFile);
+            }
+        }
+    }
 }

@@ -5,15 +5,19 @@ declare(strict_types=1);
 namespace App\Tests\AI\Workflow;
 
 use App\AI\Agent\ReviewAgent\CodeReviewAgentInterface;
+use App\AI\Agent\FixAgent\FixAgent;
+use App\AI\Agent\PromptTemplateLoader;
 use App\AI\DTO\Agent\ReviewUnitBatch;
 use App\AI\DTO\Agent\ReviewUnitResults;
 use App\AI\DTO\Git\ChangedPhpFiles;
 use App\AI\DTO\Review\ReviewBatch;
 use App\AI\Agent\FixAgent\FixAgentInterface;
 use App\AI\Agent\FixAgent\FixScopeValidatorInterface;
+use App\AI\File\PhpSourceValidator;
 use App\AI\File\SourceFileProviderInterface;
 use App\AI\File\SourceValidatorInterface;
 use App\AI\Git\ChangedCodeProviderInterface;
+use App\AI\LLM\LlmInterface;
 use App\AI\Review\ReviewFinding;
 use App\AI\Review\ReviewResult;
 use App\AI\Workflow\CodeReviewWorkflow;
@@ -22,6 +26,73 @@ use PHPUnit\Framework\TestCase;
 
 final class AgentWorkflowIntegrationTest extends TestCase
 {
+    public function testFixWorkflowAppliesAJsonEditToThePreservedUnreachableEchoTestLine(): void
+    {
+        $filePath = 'src/Example.php';
+        $source = "<?php\nfunction example(): void\n{\n    return;\n    echo 66;\n}\n";
+        $fixedSource = "<?php\nfunction example(): void\n{\n    return;\n}\n";
+        $reviewResult = new ReviewResult([
+            new ReviewFinding(
+                5,
+                'medium',
+                'code_smell',
+                'Unreachable code after return.',
+                'Remove the unreachable echo statement.',
+            ),
+        ]);
+
+        $llm = $this->createMock(LlmInterface::class);
+        $llm
+            ->expects(self::once())
+            ->method('generateJson')
+            ->willReturn(json_encode([
+                'edits' => [
+                    [
+                        'original' => "    echo 66;\n",
+                        'replacement' => '',
+                    ],
+                ],
+            ], JSON_THROW_ON_ERROR));
+
+        $sourceFileProvider = $this->createMock(SourceFileProviderInterface::class);
+        $sourceFileProvider
+            ->expects(self::once())
+            ->method('exists')
+            ->with($filePath)
+            ->willReturn(true);
+        $sourceFileProvider
+            ->expects(self::once())
+            ->method('read')
+            ->with($filePath)
+            ->willReturn($source);
+        $sourceFileProvider
+            ->expects(self::once())
+            ->method('write')
+            ->with($filePath, $fixedSource);
+
+        $agent = new FixAgent(
+            $llm,
+            new PromptTemplateLoader(dirname(__DIR__, 3) . '/prompts'),
+        );
+        $workflow = new FixWorkflow(
+            $agent,
+            $sourceFileProvider,
+            new PhpSourceValidator(),
+            $this->createPassingFixScopeValidator(),
+        );
+
+        $result = $workflow->fix(
+            new ReviewBatch([$filePath => $reviewResult]),
+            true,
+        );
+
+        self::assertTrue($result->hasChanges());
+        self::assertSame(
+            [$filePath => $fixedSource],
+            iterator_to_array($result->getFixedFiles()),
+        );
+    }
+
     public function testAgentOneReviewIsPassedToAgentTwoAndFileIsFixedAfterApproval(): void
     {
         $filePath = 'test1.php';

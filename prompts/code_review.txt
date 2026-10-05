@@ -27,6 +27,8 @@ The JSON must have exactly this structure:
     {
       "line": 5,
       "source_line": "the exact source line copied verbatim",
+      "source_before": "the exact preceding source line, or null if this is the first line",
+      "source_after": "the exact following source line, or null if this is the last line",
       "severity": "critical|high|medium|low",
       "category": "security|bug|performance|maintainability|validation|error_handling|code_smell",
       "message": "A concise explanation of the problem.",
@@ -43,6 +45,10 @@ Rules for line:
 - Use the line number from the provided PHP source.
 - "source_line" must be the exact, verbatim source line identified by "line",
   including its whitespace. This is used to verify the reported location.
+- "source_before" and "source_after" must be the exact adjacent source lines,
+  including whitespace. Use null only when the finding is on the first or last
+  source line, respectively. These provide context when the same source line
+  appears more than once.
 
 If there are no findings, return:
 
