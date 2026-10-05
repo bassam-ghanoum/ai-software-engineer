@@ -339,8 +339,6 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
                 $this->sourceLineMismatchMessage(
                     $filePath,
                     $reportedLine,
-                    $sourceLine,
-                    $sourceContext,
                     $sourceLines,
                 ),
             );
@@ -385,44 +383,18 @@ final class CodeReviewAgent implements CodeReviewAgentInterface
         );
     }
 
-    /**
-     * @param array{before: ?string, after: ?string}|null $sourceContext
-     * @param list<string> $sourceLines
-     */
     private function sourceLineMismatchMessage(
         string $filePath,
         int $reportedLine,
-        string $reportedSourceLine,
-        ?array $sourceContext,
         array $sourceLines,
     ): string {
-        $excerpt = [];
-        $firstLine = max(1, $reportedLine - 2);
-        $lastLine = min(count($sourceLines), $reportedLine + 2);
-
-        for ($lineNumber = $firstLine; $lineNumber <= $lastLine; $lineNumber++) {
-            $excerpt[] = sprintf(
-                '%d: %s',
-                $lineNumber,
-                var_export($sourceLines[$lineNumber - 1], true),
-            );
-        }
-
-        $actualSourceLine = isset($sourceLines[$reportedLine - 1])
-            ? var_export($sourceLines[$reportedLine - 1], true)
-            : '<line out of range>';
-
         return sprintf(
             'The review finding source_line does not match the reviewed source. '
-            . 'File: %s; reported line: %d; reported source_line: %s; '
-            . 'reported context: %s; actual source at reported line: %s; '
-            . 'nearby source lines: [%s].',
+            . 'File: %s; reported line: %d; line status: %s; source line count: %d.',
             $filePath,
             $reportedLine,
-            var_export($reportedSourceLine, true),
-            var_export($sourceContext, true),
-            $actualSourceLine,
-            implode('; ', $excerpt),
+            isset($sourceLines[$reportedLine - 1]) ? 'in range' : 'out of range',
+            count($sourceLines),
         );
     }
 

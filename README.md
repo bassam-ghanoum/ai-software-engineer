@@ -99,11 +99,11 @@ The **AI-Code-Review-Agent** is responsible only for reviewing code.
 It:
 
 1. Detects changed PHP files from Git.
-2. Reviews each changed PHP file independently.
-3. Reads the current source.
-4. Sends the relevant source and context to the LLM.
+2. Plans changed PHP files into bounded review units and request batches.
+3. Reads each unit's source and line range.
+4. Sends the source and context to the LLM.
 5. Produces structured review findings.
-6. Publishes the findings to the GitHub Pull Request.
+6. Reassembles unit results by file and publishes findings to the GitHub Pull Request.
 
 The review is tied to the exact Git commit SHA being reviewed.
 
@@ -135,7 +135,10 @@ The original review findings remain the source of truth for the fix operation.
 
 # AI-Code-Review-Agent
 
-Each changed PHP file is reviewed independently.
+Changed PHP files are divided into bounded units and grouped into requests to
+stay within the configured prompt budget. Large files are split across units;
+findings are mapped back to absolute file line numbers and combined by file.
+Malformed batch responses are retried by reviewing the units individually.
 
 A review finding contains:
 
@@ -178,6 +181,9 @@ fails with a non-zero exit code.
 ```
 
 The review result is stored as structured JSON and associated with the reviewed commit SHA.
+Each finding's reported source line is checked against the reviewed source
+before it is accepted, so a model-reported line that cannot be located is
+rejected rather than attached to the wrong code.
 
 ---
 
@@ -277,6 +283,13 @@ the findings for a new commit. If GitHub reports that the workflow token is not
 allowed to resolve threads, configure the optional `AI_REVIEW_TOKEN` repository
 secret with a maintainer token that has pull-request write access. The review
 itself can still complete when thread resolution is unavailable.
+
+Both workflows prefer `AI_REVIEW_TOKEN` when it is set and otherwise use
+`GITHUB_TOKEN`. A configured but revoked, expired, or otherwise invalid
+`AI_REVIEW_TOKEN` will not fall back to `GITHUB_TOKEN`; update or remove that
+secret if GitHub reports `Bad credentials` (HTTP 401). The fix workflow also
+uses the configured token when resolving AI review threads after a successful
+fix push.
 
 The workflows are in `.github/workflows/ai-code-review.yml` and
 `.github/workflows/ai-code-fix.yml`. They use `GEMINI_API_KEY` as a repository
@@ -583,7 +596,8 @@ Example:
 docker exec agents_system php bin/console ai:review main HEAD
 ```
 
-The workflow identifies changed PHP files and reviews each file independently.
+The workflow identifies changed PHP files, plans bounded source units and
+batches, and combines the validated findings per file.
 
 ---
 
@@ -605,6 +619,27 @@ When using an existing persisted review:
 
 ```bash
 docker exec agents_system php bin/console ai:fix HEAD~1 HEAD --approved --review-file=ai-review/review-result.json
+```
+
+Other review-artifact commands used by the GitHub workflow are available for
+local inspection and automation:
+
+```bash
+# Bind an artifact to the reviewed head and base commits.
+docker exec agents_system php bin/console ai:review:bind-result review-result.json \
+  --commit-sha=<head-sha> \
+  --base-sha=<base-sha>
+
+# Validate the artifact and optionally check its expected commit SHAs.
+docker exec agents_system php bin/console ai:review:validate-result review-result.json \
+  --commit-sha=<head-sha> \
+  --base-sha=<base-sha>
+
+# Prepare inline and general GitHub review-comment payloads from an artifact and diff.
+docker exec agents_system php bin/console ai:review:prepare-comments review-result.json changed.php.diff
+
+# Check Gemini connectivity and credentials.
+docker exec agents_system php bin/console ai:test-gemini
 ```
 
 The fix workflow:
@@ -731,7 +766,8 @@ plain text and loaded by `PromptTemplateLoader`.
 - `src/AI/Review/`: review findings, results, and serialization
 - `src/AI/Workflow/`: review and fix orchestration
 - `src/Command/`: Symfony console commands
-- `prompts/`: `code_review.txt` and `fix_agent.txt`
+- `prompts/`: `code_review.txt`, `code_review_batch.txt`, `fix_agent.txt`, and
+  `fix_scope_validator.txt`
 - `tests/`: automated unit and workflow tests
 ---
 
@@ -759,6 +795,10 @@ Run the complete test suite in the PHP container:
 ```bash
 docker exec agents_system php ./bin/phpunit tests/ --display-all-issues
 ```
+
+The application requires PHP 8.4 or newer. PHPUnit also requires the `mbstring`
+extension; the GitHub Actions workflows provision PHP 8.5 with `mbstring` and
+`intl`.
 
 Check Symfony service wiring with:
 
@@ -803,7 +843,15 @@ GEMINI_MODEL
 
 For local development, set these in `app/.env.local`. In GitHub Actions, set
 `GEMINI_API_KEY` as a repository secret and `GEMINI_MODEL` as a repository
-variable.
+variable. The optional `GEMINI_RETRY_DELAY` value sets the initial delay (in
+seconds) used by Gemini's retry backoff; it defaults to `1` in the Symfony
+service configuration.
+
+GitHub thread resolution uses `AI_REVIEW_TOKEN` when configured, or falls back
+to `GITHUB_TOKEN` when the secret is absent. The workflow grants
+`pull-requests: write` to `GITHUB_TOKEN`; if using a separate token, ensure it
+is valid and has repository access and pull-request write access. See the
+[GitHub Actions Workflow](#github-actions-workflow) section for token behavior.
 
 The Gemini model can be configured independently from the application code.
 
@@ -833,7 +881,9 @@ This keeps the fix operation tied to a known review and avoids continuously gene
 
 ## Small Scope
 
-AI-Code-Review-Agent reviews changed files independently.
+AI-Code-Review-Agent reviews bounded units grouped into requests and combines
+the results per file. It verifies model-reported source locations against the
+submitted code.
 
 AI-Code-Fix-Agent receives the findings relevant to the file it is fixing.
 
@@ -910,6 +960,7 @@ The current MVP focuses on:
 * Review SHA validation
 * Approval replay protection
 * AI-Code-Fix-Agent commit loop protection
+* Bounded review batching and source-location validation
 * Docker-based development
 * Automated tests
 
