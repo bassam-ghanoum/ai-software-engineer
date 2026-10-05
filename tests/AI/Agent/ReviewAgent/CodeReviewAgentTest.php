@@ -258,15 +258,16 @@ PHP
                 $exception->getMessage(),
             );
             self::assertStringContainsString(
-                'File: test.php; reported line: 1; reported source_line: \'echo 42;\';',
+                'File: test.php; reported line: 1; line status: in range; source line count: 1.',
                 $exception->getMessage(),
             );
-            self::assertStringContainsString(
-                'actual source at reported line: \'<?php echo "Hello World";\'',
+            self::assertStringNotContainsString(
+                'echo 42;',
                 $exception->getMessage(),
+                'The reported source text must not be included in diagnostics.',
             );
-            self::assertStringContainsString(
-                'nearby source lines: [1: \'<?php echo "Hello World";\']',
+            self::assertStringNotContainsString(
+                '<?php echo "Hello World";',
                 $exception->getMessage(),
             );
         }
