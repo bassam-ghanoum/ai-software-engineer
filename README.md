@@ -22,15 +22,20 @@ The application requires Docker Compose and Git. From the workspace directory
 that contains `docker-compose.yml`:
 
 1. Copy `.env.example` to `.env` and set local database credentials.
+   Generate unique values for `APP_SECRET`, `MYSQL_ROOT_PASSWORD`, and
+   `MYSQL_PASSWORD`; do not reuse production credentials.
 2. Start the services with `docker compose up --build -d`.
 3. Configure `GEMINI_API_KEY` and `GEMINI_MODEL` in `app/.env.local`. Do not
    commit this file or expose the API key.
 4. If dependencies are not already installed, run
    `docker exec agents_system composer install`.
 
-The application is served at `http://localhost:8080`, phpMyAdmin at
-`http://localhost:8081`, and MySQL is exposed on `127.0.0.1:3307` by default.
-These ports can be changed with the variables in the workspace `.env` file.
+The application is served at `http://localhost:8080`. MySQL is bound to
+`127.0.0.1:3307` by default, and phpMyAdmin is not started unless explicitly
+enabled with `docker compose --profile dev-tools up --build -d`; it is bound to
+`127.0.0.1:8081`. Change these ports in the workspace `.env` file as needed.
+The example config disables debug output; enable `APP_DEBUG=1` only for local
+development. The Compose defaults use production mode with debug disabled.
 
 The PHP container is named `agents_system`; application commands below are run
 from `/var/www/app` inside that container.
